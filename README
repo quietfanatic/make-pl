@@ -3,8 +3,10 @@ Make_pl - Very portable build system in Perl
 https://github.com/quietfanatic/make-pl
 
 Installation:
-  Grab the current version of Make_pl.pm and stuff it in your project directory.
+  Just grab Make_pl.pm and stuff it in your project directory.
   This has no dependencies besides Perl >= 5.10 and its core modules.
+  (I suppose if you want you can put this in some library directory with all
+  your other DarkPAN modules, but that will reduce your project's portability.)
 
 Usage:
   To run a make.pl:
@@ -30,7 +32,7 @@ Quick Reference:
   subdep <routine>;
     - Provides a way to automatically deduce subdeps.  The routine will be
        called with a filename and is expected to return some more filenames.
-       See "example/make.pl" in this repo for a function that'll to scan C/C++
+       See "sample_make.pl" in this repo for a function that'll to scan C/C++
        files for #include statements.
   defaults <targets...>;
     - With no arguments, make.pl will build these targets.  The default
@@ -62,6 +64,7 @@ Working Directories:
 
 Recommendations:
   - It's best to die if a something fails.  The autodie pragma is recommended.
+  - A basic knowledge of Perl is recommended.
   - If your program is large and has good modularity, do take advantage of the
      include functionality.  If two make.pl files mutually include one another,
      you can invoke either one to do stuff; the following commands would be
@@ -75,15 +78,16 @@ Recommendations:
        $ modules/cake/make.pl clean  # oops, this cleans whole project
        $ modules/cake/make.pl modules/cake/clean  # Just clean the cake
   - After the previous point it goes without saying, but you can invoke a
-     make.pl from any directory, not just the one it's in, provide the make.pl
+     make.pl from any directory, not just the one it's in, provided the make.pl
      is correctly formed.  To make sure your make.pl can be run anywhere, put
      this at the top:
        use FindBin;
-       use if !$^S, lib => "$FindBin::Bin/path/to/Make_pl.pm";
+       use if !$^S, lib => "$FindBin::Bin/<directory containing Make_pl.pm>";
        use Make_pl;
      If you used 'perl Make_pl.pm' to generate a make.pl, it'll have done this
      for you.
   - Because your build script is in a real programming language and not a DSL,
-     you can actually do real abstraction.  Take a look at "sample/make.pl"
+     you can actually do real abstraction.  Take a look at "sample_make.pl"
      to see how.
+  - If
 

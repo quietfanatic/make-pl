@@ -8,7 +8,7 @@ use autodie;
 
 workflow {
     rule 'to', 'from', sub {
-        run 'cat from > to';
+        run "cat from > to";
     };
     phony 'clean', '', sub {
         unlink 'to';
