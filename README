@@ -10,9 +10,9 @@ Installation:
 
 Usage:
   To run a make.pl:
-    - ./make.pl (targets)
+    - ./make.pl <targets>
   To generate a bare-bones make.pl:
-    - perl Make_pl.pm [dir (defaults to .)]
+    - perl Make_pl.pm <directory (defaults to .)>
 
 Quick Reference:
   workflow { <rules and stuff> };
