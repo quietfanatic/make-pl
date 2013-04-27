@@ -1,0 +1,89 @@
+
+Make_pl - Portable drop-in build system (in Perl)
+https://github.com/quietfanatic/make-pl
+
+Installation:
+  Grab the current version of Make_pl.pm and stuff it in your project directory.
+  This has no dependencies besides Perl >= 5.10 and its core modules.
+
+Usage:
+  To run a make.pl:
+    - ./make.pl (targets)
+  To generate a bare-bones make.pl:
+    - perl Make_pl.pm [dir (defaults to .)]
+
+Quick Reference:
+  workflow { <rules and stuff> };
+    - Put all your rules and stuff in here.
+  rule <targets>, <dependencies>, <routine>;
+    - Defines a compilation rule like in a Makefile.
+       - <targets> can be a single filename or an array ref of filenames.
+       - <dependencies> can be a single filename, an array ref of filenames,
+          or a subroutine which returns filenames.
+       - The compile routine (the last argument) is given two array refs as
+          arguments containing the targets and the dependencies.
+  phony <targets>, <dependencies>, <routine>;
+    - like rule, but the target(s) do not correspond to actual files
+  subdep <targets>, <dependencies>;
+    - Establishes that anything that depends on the target(s) also depends
+       on the given dependencies, e.g. because of an #include statement.
+  subdep <routine>;
+    - Provides a way to automatically deduce subdeps.  The routine will be
+       called with a filename and is expected to return some more filenames.
+       See "example/make.pl" in this repo for a function that'll to scan C/C++
+       files for #include statements.
+  defaults <targets...>;
+    - With no arguments, make.pl will build these targets.  The default
+       default is to run the first rule given in the workflow.
+  include <filenames...>;
+    - Include the targets and rules in another make.pl.  Relative filenames,
+       working directories, etc. all do The Right Thing.  Cyclical includes
+       are fine.  Subroutines defined in this make.pl will work in 
+  chdir <directory>;
+    - Reexport of Cwd::chdir.
+  targetmatch <regex>;
+    - Returns all defined targets whose absolute filenames match the regex.
+  run <command>;
+    - Like the builtin system(), but aborts the build process if the command
+       gives a non-zero exit status.
+
+Working Directories:
+  Make_pl tries to make working directories a lexical concept, so that things
+  just work how you expect them to.
+    - All relative filenames given to the API are relative to the current
+       working directory.
+    - At the beginning of a workflow { } block, the working directory is always
+       the same directory that the make.pl is in, no matter where you invoked
+       it from.
+    - All routines passed to a rule and will be run in the same working
+       directory that the rule was defined in.
+    - If you must chdir, don't use CORE::chdir or some other module's chdir
+       that doesn't update Cwd::cwd.
+
+Recommendations:
+  - It's best to die if a something fails.  The autodie pragma is recommended.
+  - If your program is large and has good modularity, do take advantage of the
+     include functionality.  If two make.pl files mutually include one another,
+     you can invoke either one to do stuff; the following commands would be
+     equivalent:
+       $ ./make.pl modules/cake/lime
+       $ modules/cake/make.pl modules/cake/lime
+       $ cd modules/cake; ./make.pl lime
+     This does come with one caveat.  If you want to use a phony target
+     belonging to a make.pl in a different directory, you must prefix the
+     phony target with that directory (as if it's actually a file).
+       $ modules/cake/make.pl clean  # oops, this cleans whole project
+       $ modules/cake/make.pl modules/cake/clean  # Just clean the cake
+  - After the previous point it goes without saying, but you can invoke a
+     make.pl from any directory, not just the one it's in, provide the make.pl
+     is correctly formed.  To make sure your make.pl can be run anywhere, put
+     this at the top:
+       use FindBin;
+       use if !$^S, lib => "$FindBin::Bin/path/to/Make_pl.pm";
+       use Make_pl;
+     If you used 'perl Make_pl.pm' to generate a make.pl, it'll have done this
+     for you.
+  - Because your build script is in a real programming language and not a DSL,
+     you can actually do real abstraction.  Take a look at "sample/make.pl"
+     to see how.
+
