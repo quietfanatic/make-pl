@@ -13,45 +13,6 @@
  #
  ##### (end of 'this header')
 
- #####
- #
- # Quick Reference (see README in the git repo for more details):
- #   workflow { <rules and stuff> };
- #     - Put all your rules and stuff in here.
- #   rule <targets>, <dependencies>, <routine>;
- #     - Defines a compilation rule like in a Makefile.
- #        - <targets> can be a single filename or an array ref of filenames.
- #        - <dependencies> can be a single filename, an array ref of filenames,
- #           or a subroutine which returns filenames.
- #        - The compile routine (the last argument) is given two array refs as
- #           arguments containing the targets and the dependencies.
- #   phony <targets>, <dependencies>, <routine>;
- #     - like rule, but the target(s) do not correspond to actual files
- #   subdep <targets>, <dependencies>;
- #     - Establishes that anything that depends on the target(s) also depends
- #        on the given dependencies, e.g. because of an #include statement.
- #   subdep <routine>;
- #     - Provides a way to automatically deduce subdeps.  The routine will be
- #        called with a filename and is expected to return some more filenames.
- #        See README in the git repo for example code to scan C/C++ files for
- #        #include statements.
- #   defaults <targets...>;
- #     - With no arguments, make.pl will build these targets.  The default
- #        default is to build the first rule given in the workflow.
- #   include <filenames...>;
- #     - Include the targets and rules in another make.pl.  Relative filenames,
- #        working directories, etc. all do The Right Thing.  Cyclical includes
- #        are fine.  Subroutines defined in this make.pl will work in 
- #   chdir <directory>;
- #     - Reexport of Cwd::chdir.
- #   targetmatch <regex>;
- #     - Returns all defined targets whose absolute filenames match the regex.
- #   run <command>;
- #     - Like the builtin system(), but aborts the build process if the command
- #        gives a non-zero exit status.
- #
- #####
-
 package Make_pl;
 
 use strict;
@@ -460,25 +421,28 @@ sub run_workflow {
 if ($^S == 0) {  # We've been called directly
     my $dir = $ARGV[0];
     defined $dir or $dir = cwd;
+    -d $dir or die "\e[31m✗\e[0m $dir doesn't seem to be a directory.";
+    require FindBin;
+    my $path_to_pm = abs2rel($FindBin::Bin, $dir);
     if (-e "$dir/make.pl") {
         say "\e[31m✗\e[0m Did not generate $dir/make.pl because it already exists.";
         exit 1;
     }
     open my $MAKEPL, '>', "$dir/make.pl";
-    print $MAKEPL <<'END';
+    print $MAKEPL <<"END";
 #!/usr/bin/perl
 use strict;
 use warnings;
 use FindBin;
-use if !$^S, lib => $FindBin::Bin;
+use if !\$^S, lib => "\$FindBin::Bin/$path_to_pm";
 use MakePl;
 
 workflow {
      # Sample rules
-    rule $program, $main, sub {
-        run "gcc -Wall \Q$main\E -o \Q$program\E";
+    rule \$program, \$main, sub {
+        run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
     }
-    rule 'clean', [], sub { unlink $program; };
+    rule 'clean', [], sub { unlink \$program; };
 };
 END
     chmod 0755, $MAKEPL;
