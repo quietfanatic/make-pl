@@ -57,7 +57,7 @@ Working Directories:
     - At the beginning of a workflow { } block, the working directory is always
        the same directory that the make.pl is in, no matter where you invoked
        it from.
-    - All routines passed to a rule and will be run in the same working
+    - All routines passed to a rule will be run in the same working
        directory that the rule was defined in.
     - If you must chdir, don't use CORE::chdir or some other module's chdir
        that doesn't update Cwd::cwd.
