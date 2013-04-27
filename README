@@ -40,7 +40,7 @@ Quick Reference:
   include <filenames...>;
     - Include the targets and rules in another make.pl.  Relative filenames,
        working directories, etc. all do The Right Thing.  Cyclical includes
-       are fine.  Subroutines defined in this make.pl will work in 
+       are fine.
   chdir <directory>;
     - Reexport of Cwd::chdir.
   targetmatch <regex>;
@@ -61,10 +61,17 @@ Working Directories:
        directory that the rule was defined in.
     - If you must chdir, don't use CORE::chdir or some other module's chdir
        that doesn't update Cwd::cwd.
+    - Even if one make.pl includes another make.pl, each uses filenames
+       relative to its own directory.  That is, if ./make.pl says
+       "modules/cake/lime" and modules/cake/make.pl says "lime", they are
+       talking about the same file.
+    - Filenames given on the command line are relative to the current working
+       directory of the command line, not of the make.pl.
 
 Recommendations:
   - It's best to die if a something fails.  The autodie pragma is recommended.
-  - A basic knowledge of Perl is recommended.
+  - A basic knowledge of Perl is recommended.  Knowledge of make and Makefiles
+     is not required, but knowledge of why people use them is.
   - If your program is large and has good modularity, do take advantage of the
      include functionality.  If two make.pl files mutually include one another,
      you can invoke either one to do stuff; the following commands would be
@@ -72,11 +79,12 @@ Recommendations:
        $ ./make.pl modules/cake/lime
        $ modules/cake/make.pl modules/cake/lime
        $ cd modules/cake; ./make.pl lime
-     This does come with one caveat.  If you want to use a phony target
-     belonging to a make.pl in a different directory, you must prefix the
-     phony target with that directory (as if it's actually a file).
-       $ modules/cake/make.pl clean  # oops, this cleans whole project
-       $ modules/cake/make.pl modules/cake/clean  # Just clean the cake
+     This does cause one counterintuitive effect.  If you want to use a phony
+     target belonging to a make.pl in a different directory, you must prefix
+     the phony target with that directory (as if it's actually a file).
+       $ modules/cake/make.pl clean  # oops, this cleans the whole project
+       $ modules/cake/make.pl modules/cake/clean  # just clean the cake
+       $ ./make.pl modules/cake/clean  # this works too
   - After the previous point it goes without saying, but you can invoke a
      make.pl from any directory, not just the one it's in, provided the make.pl
      is correctly formed.  To make sure your make.pl can be run anywhere, put
@@ -89,5 +97,4 @@ Recommendations:
   - Because your build script is in a real programming language and not a DSL,
      you can actually do real abstraction.  Take a look at "sample_make.pl"
      to see how.
-  - If
 
