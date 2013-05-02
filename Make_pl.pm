@@ -435,7 +435,7 @@ use strict;
 use warnings;
 use FindBin;
 use if !\$^S, lib => "\$FindBin::Bin/$path_to_pm";
-use Make_Pl;
+use Make_pl;
 
 workflow {
      # Sample rules
