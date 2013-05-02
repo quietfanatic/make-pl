@@ -69,7 +69,7 @@ Working Directories:
        directory of the command line, not of the make.pl.
 
 Recommendations:
-  - It's best to die if a something fails.  The autodie pragma is recommended.
+  - It's best to die if something fails.  The autodie pragma is recommended.
   - A basic knowledge of Perl is recommended.  Knowledge of make and Makefiles
      is not required, but knowledge of why people use them is.
   - If your program is large and has good modularity, do take advantage of the
