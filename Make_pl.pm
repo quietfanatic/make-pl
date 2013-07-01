@@ -192,6 +192,7 @@ sub include {
         for (keys %{$workflow{subdeps}}) {
             push @{$this_workflow->{subdeps}{$_}}, @{$workflow{subdeps}{$_}};
         }
+        push @{$this_workflow->{auto_subdeps}}, @{$workflow{auto_subdeps}};
     }
 }
 
@@ -207,10 +208,7 @@ sub targetmatch {
 }
 
 sub run (@) {
-    require IPC::System::Simple;
-    eval { IPC::System::Simple::system(@_) };
-    if ($@) {
-        warn $@;
+    system(@_) == 0 or do {
         my @command = @_;
         ref $_[0] eq 'ARRAY' and shift @command;
         for (@command) {
@@ -219,8 +217,18 @@ sub run (@) {
                 $_ = "'$_'";
             }
         }
-        status("☢ Command failed: @command\n");
-        die "\n";
+         # As per perldoc -f system
+        if ($? == -1) {
+            status(print "☢ Couldn't start command: $!");
+        }
+        elsif ($? & 127) {
+            status(sprintf "☢ Command died with signal %d, %s coredump",
+               ($? & 127),  ($? & 128) ? 'with' : 'without');
+        }
+        else {
+            status(sprintf "☢ Command exited with value %d", $? >> 8);
+        }
+        die_status("☢ Failed command: @command");
     }
 }
 sub realpaths (@) {
