@@ -5,9 +5,9 @@
  # Make_pl - Portable drop-in build system
  # https://github.com/quietfanatic/make-pl
  #
- # Use, copy, distribute, or hack all you want.
- # If you publish a modified version, record that you've modified it in this header.
- # Don't remove anything from this header that wasn't written by yourself.
+ # Use, copy, distribute, or hack all you want.  If you publish a modified
+ #  version, record that you've modified it in this header.  Don't remove
+ #  or change anything from this header that wasn't written by yourself.
  #
  # Version 2013-04-26
  #
