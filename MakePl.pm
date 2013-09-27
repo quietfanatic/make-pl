@@ -61,6 +61,8 @@ our @included = realpath($0);
 my %modtimes;
  # For preventing false error messages
 my $died_from_no_make = 0;
+ # Defined later
+my %builtin_options;
 ##### DEFINING WORKFLOWS
 
 
@@ -78,7 +80,7 @@ sub import {
         autoed_subdeps => {},
         phonies => {},
         defaults => undef,
-        options => {},  # HASH of CODE or SCALAR
+        options => {%builtin_options},
         made => 0,
     );
      # Get directory of the calling file, which may not be cwd
@@ -237,6 +239,53 @@ sub include {
     }
 }
 
+##### CONFIGURATION
+
+%builtin_options = (
+    help => {
+        ref => sub {
+            say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
+            my @custom = grep $workflow{options}{$_}{custom}, keys %{$workflow{options}};
+            if (@custom) {
+                say "Custom options:";
+                for (sort @custom) {
+                    if (defined $workflow{options}{$_}{desc}) {
+                        say "    $workflow{options}{$_}{desc}";
+                    }
+                    else {
+                        say "    --$_";
+                    }
+                }
+            }
+            my @general = grep !$workflow{options}{$_}{custom}, keys %{$workflow{options}};
+            if (@general) {
+                say "General options:";
+                for (sort @general) {
+                    say "    $workflow{options}{$_}{desc}";
+                }
+            }
+            say "Final targets (use --list-targets to see all targets):";
+            for (sort grep target_is_final($_), keys %{$workflow{targets}}) {
+                say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
+            }
+            exit 1;
+        },
+        desc => "--help - show this help message",
+        custom => 0
+    },
+    'list-targets' => {
+        ref => sub {
+            say "\e[31m✗\e[0m All targets:";
+            for (sort keys %{$workflow{targets}}) {
+                say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
+            }
+            exit 1;
+        },
+        desc => "--list-targets - list all declared targets",
+        custom => 0
+    },
+);
+
 sub option ($$;$) {
     %workflow or croak "option was called outside of a workflow";
     my ($name, $ref, $desc) = @_;
@@ -244,7 +293,11 @@ sub option ($$;$) {
         &option($_, $ref, $desc) for @$name;
     }
     elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
-        $workflow{options}{$name} = [$ref, $desc];
+        $workflow{options}{$name} = {
+            ref => $ref,
+            desc => $desc,
+            custom => 1
+        };
     }
     else {
         croak "Second argument to option is not a SCALAR or CODE ref";
@@ -501,35 +554,6 @@ sub run_workflow {
                 my ($name, $val) = ($1, $2);
                 my $optop = $workflow{options}{$name};
                 if (not defined $optop) {
-                    if ($name eq 'help') {
-                        if (%{$workflow{options}}) {
-                            say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
-                            say "Available options are:";
-                            for (keys %{$workflow{options}}) {
-                                if (defined $workflow{options}{$_}[1]) {
-                                    say "    $workflow{options}{$_}[1]";
-                                }
-                                else {
-                                    say "    --$_";
-                                }
-                            }
-                            say "Final targets (use --list-targets to see all targets):";
-                            for (sort grep target_is_final($_), keys %{$workflow{targets}}) {
-                                say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
-                            }
-                        }
-                        else {
-                            say "\e[31m✗\e[0m Usage: $0 <targets>";
-                        }
-                        exit 1;
-                    }
-                    elsif ($name eq 'list-targets') {
-                        say "\e[31m✗\e[0m All targets:";
-                        for (sort keys %{$workflow{targets}}) {
-                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
-                        }
-                        exit 1;
-                    }
                     if (%{$workflow{options}}) {
                         say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
                     }
@@ -538,11 +562,11 @@ sub run_workflow {
                     }
                     exit 1;
                 }
-                elsif (ref $optop->[0] eq 'SCALAR') {
-                    ${$optop->[0]} = $val;
+                elsif (ref $optop->{ref} eq 'SCALAR') {
+                    ${$optop->{ref}} = $val;
                 }
                 else {  # CODE
-                    $optop->[0]($val);
+                    $optop->{ref}($val);
                 }
             }
             else {
