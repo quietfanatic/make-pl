@@ -1,3 +1,3 @@
-Make_pl.pm has its license inline, because you're intended to copy it directly
-into your own project directory.
+Make_pl.pm has its license inline (Spoiler: it's the MIT license).
+You're intended to copy that file directly into your own project directory.
 Everything else in this project is public domain.
