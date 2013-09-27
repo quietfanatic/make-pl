@@ -37,12 +37,17 @@ use autodie;
 no autodie 'chdir';
 use Exporter qw(import);
 use Carp qw(croak);
-use Cwd qw(cwd realpath);
+use Cwd qw(realpath);
+use subs qw(cwd chdir);
 use File::Spec::Functions qw(:ALL);
 
-our @EXPORT = qw(workflow rule rules phony subdep defaults include option chdir targetmatch run);
+our @EXPORT = qw(workflow rule rules phony subdep defaults include option cwd chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
+
+##### GLOBALS
+ # Caches the current working directory
+our $cwd = Cwd::cwd();
  # This variable is only defined inside a workflow definition.
 our %workflow;
  # This is set to 0 when recursing.
@@ -53,6 +58,7 @@ our $original_base = cwd;
 our @included = realpath($0);
  # A cache of file modification times.  It's probably safe to keep until exit.
 my %modtimes;
+ # A cache of the 
 
 ##### DEFINING WORKFLOWS
 
@@ -77,9 +83,9 @@ sub workflow (&) {
     my @vdf = splitpath(rel2abs($file));
     my $base = catpath($vdf[0], $vdf[1], '');
     my $old_cwd = cwd;
-    Cwd::chdir $base;
+    chdir($base);
         $definition->();
-    Cwd::chdir $old_cwd;
+    chdir($old_cwd);
     if ($this_is_root) {
         exit(!run_workflow(@ARGV));
     }
@@ -228,8 +234,13 @@ sub option ($$;$) {
     }
 }
 
-sub chdir (;$) {
-    goto &Cwd::chdir;  # Re-export, basically
+##### DIRECTORY HANDLING
+ # Cwd::cwd is super slow, so we should do it as little as possible.
+sub cwd () {
+    return $cwd;
+}
+sub chdir ($) {
+    $cwd eq $_[0] or Cwd::chdir($cwd = $_[0]);
 }
 
 ##### UTILITIES
@@ -277,15 +288,15 @@ sub realpaths (@) {
 sub target_is_final ($) {
     my $old_cwd = cwd;
     for (@{$workflow{rules}}) {
-        Cwd::chdir $_->{base};
+        chdir $_->{base};
         for (delazify($_->{from}, $_->{to})) {
             if (realpath($_) eq $_[0]) {
-                Cwd::chdir $old_cwd;
+                chdir $old_cwd;
                 return 0;
             }
         }
     }
-    Cwd::chdir $old_cwd;
+    chdir $old_cwd;
     return 1;
 }
 
@@ -298,14 +309,14 @@ sub target_is_default ($) {
         my $rule = $workflow{rules}[0];
         defined $rule or return 0;
         my $old_cwd = cwd;
-        Cwd::chdir $rule->{base};
+        chdir $rule->{base};
         for (@{$rule->{to}}) {
             if (realpath($_) eq $_[0]) {
-                Cwd::chdir $old_cwd;
+                chdir $old_cwd;
                 return 1;
             }
         }
-        Cwd::chdir $old_cwd;
+        chdir $old_cwd;
         return 0;
     }
 }
@@ -375,12 +386,12 @@ sub get_auto_subdeps {
         my $target = $_;
         @{$workflow{autoed_subdeps}{$target} //= [
             map {
-                Cwd::chdir $_->{base};
+                chdir $_->{base};
                 realpaths($_->{code}($target));
             } @{$workflow{auto_subdeps}}
         ]}
     } @_;
-    Cwd::chdir $old_cwd;
+    chdir $old_cwd;
     return @r;
 }
 
@@ -391,26 +402,26 @@ sub add_subdeps {
     for (my $i = 0; $i < @deps; $i++) {
         push @deps, grep { my $d = $_; not grep $d eq $_, @deps } get_auto_subdeps($deps[$i]);
         for my $subdep (@{$workflow{subdeps}{$deps[$i]}}) {
-            Cwd::chdir $subdep->{base};
+            chdir $subdep->{base};
             $subdep->{from} = [delazify($subdep->{from}, $subdep->{to})];
             push @deps, grep { my $d = $_; not grep $d eq $_, @deps } realpaths(@{$subdep->{from}});
         }
     }
-    Cwd::chdir $old_cwd;
+    chdir $old_cwd;
     return @deps;
 }
 
 sub resolve_deps {
     my ($rule) = @_;
      # Get the realpaths of all dependencies and their subdeps
-    Cwd::chdir $rule->{base};
+    chdir $rule->{base};
     $rule->{from} = [delazify($rule->{from}, $rule->{to})];
     return add_subdeps(realpaths(@{$rule->{from}}));
 }
 
 sub plan_rule {
     my ($plan, $rule) = @_;
-    Cwd::chdir $rule->{base};
+    chdir $rule->{base};
      # detect loops
     if (not defined $rule->{planned}) {
         my $mess = "☢ Dependency loop\n";
@@ -543,18 +554,18 @@ sub run_workflow {
     }
     my $old_cwd = cwd;
     for my $rule (@program) {
-        Cwd::chdir rel2abs($rule->{base});
+        chdir rel2abs($rule->{base});
         status "⚙ ", show_rule($rule);
         eval { $rule->{recipe}->($rule->{to}, $rule->{from}) };
         if ($@) {
             warn $@ unless "$@" eq "\n";
             say "\e[31m✗\e[0m Did not finish due to error.";
-            Cwd::chdir $old_cwd;
+            chdir $old_cwd;
             return 0;
         }
     }
     say "\e[32m✓\e[0m Done.";
-    Cwd::chdir $old_cwd;
+    chdir $old_cwd;
     return 1;
 }
 

@@ -10,7 +10,7 @@ Installation:
 
 Usage:
   To run a make.pl:
-    - ./make.pl <targets>
+    - ./make.pl <options> <targets>
   To generate a bare-bones make.pl:
     - perl Make_pl.pm <directory (defaults to .)>
 
@@ -66,14 +66,15 @@ Working Directories:
        it from.
     - All routines passed to a rule will be run in the same working
        directory that the rule was defined in.
-    - If you must chdir, don't use CORE::chdir or some other module's chdir
-       that doesn't update Cwd::cwd.
     - Even if one make.pl includes another make.pl, each uses filenames
        relative to its own directory.  That is, if ./make.pl says
        "modules/cake/lime" and modules/cake/make.pl says "lime", they are
        talking about the same file.
     - Filenames given on the command line are relative to the current working
        directory of the command line, not of the make.pl.
+    - Manually changing directories is not recommended.  If you must chdir,
+       please use the chdir provided by this module.  Using CORE::chdir or any
+       other chdir will desync the working directory.
 
 Recommendations:
   - It's best to die if something fails.  The autodie pragma is recommended.
