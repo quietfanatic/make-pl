@@ -272,6 +272,21 @@ sub realpaths (@) {
     } @_;
 }
 
+sub target_is_final ($) {
+    my $old_cwd = cwd;
+    for (@{$workflow{rules}}) {
+        Cwd::chdir $_->{base};
+        for (delazify($_->{from}, $_->{to})) {
+            if (realpath($_) eq $_[0]) {
+                Cwd::chdir $old_cwd;
+                return 0;
+            }
+        }
+    }
+    Cwd::chdir $old_cwd;
+    return 1;
+}
+
 ##### PRINTING ETC.
 
 sub directory_prefix {
@@ -447,9 +462,20 @@ sub run_workflow {
                                     say "    --$_";
                                 }
                             }
+                            say "Final targets (use --list-targets to see all targets):";
+                            for (sort grep target_is_final($_), keys %{$workflow{targets}}) {
+                                say "    ", abs2rel($_);
+                            }
                         }
                         else {
                             say "\e[31m✗\e[0m Usage: $0 <targets>";
+                        }
+                        exit 1;
+                    }
+                    elsif ($name eq 'list-targets') {
+                        say "\e[31m✗\e[0m All targets:";
+                        for (sort keys %{$workflow{targets}}) {
+                            say "    ", abs2rel($_);
                         }
                         exit 1;
                     }
