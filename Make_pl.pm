@@ -59,9 +59,10 @@ our $original_base = cwd;
 our @included = realpath($0);
  # A cache of file modification times.  It's probably safe to keep until exit.
 my %modtimes;
- # A cache of the 
-
+ # For preventing false error messages
+my $died_from_no_make = 0;
 ##### DEFINING WORKFLOWS
+
 
 sub import {
     %workflow and croak "workflow was called inside a workflow (did you use 'do' instead of 'include'?)";
@@ -78,6 +79,7 @@ sub import {
         phonies => {},
         defaults => undef,
         options => {},  # HASH of CODE or SCALAR
+        made => 0,
     );
      # Get directory of the calling file, which may not be cwd
     my @vdf = splitpath(rel2abs($file));
@@ -88,11 +90,18 @@ sub import {
 }
 
 sub make () {
+    $workflow{made} = 1;
     if ($this_is_root) {
         exit(!run_workflow(@ARGV));
     }
+    1;
 }
 
+END {
+    if (!$died_from_no_make and !$workflow{made}) {
+        warn "\e[31m✗\e[0m $workflow{caller_file} did not end with 'make;'\n";
+    }
+}
 
 ### DECLARING RULES
 
@@ -208,6 +217,10 @@ sub include {
             Make_pl::chdir $old_cwd;
             $@ and die_status $@;
         };
+        if (!$workflow{made}) {
+            $died_from_no_make = 1;
+            die "\e[31m✗\e[0m $workflow{caller_file} did not end with 'make;'\n";
+        }
         return unless %workflow;  # Oops, it wasn't a make.pl, but we did it anyway
          # merge workflows
         push @{$this_workflow->{rules}}, @{$workflow{rules}};
