@@ -208,6 +208,8 @@ sub include {
         for (keys %{$workflow{subdeps}}) {
             push @{$this_workflow->{subdeps}{$_}}, @{$workflow{subdeps}{$_}};
         }
+         # Our options override included options
+        $this_workflow->{options} = {%{$workflow{options}}, %{$this_workflow->{options}}};
         push @{$this_workflow->{auto_subdeps}}, @{$workflow{auto_subdeps}};
     }
 }
