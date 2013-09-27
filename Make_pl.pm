@@ -40,12 +40,8 @@ use Carp qw(croak);
 use Cwd qw(cwd realpath);
 use File::Spec::Functions qw(:ALL);
 
-our @EXPORT = qw(workflow rule rules phony subdep defaults include chdir targetmatch run);
+our @EXPORT = qw(workflow rule rules phony subdep defaults include option chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
-
- # Options with passed on the command-line to your make.pl will be stuffed into here.  The only options recognized are of the form "--opt" and "--opt=val".  The "--" is removed.  An option with a '=' exists but is undef.
-our %options = ();
-
 
  # This variable is only defined inside a workflow definition.
 our %workflow;
@@ -75,6 +71,7 @@ sub workflow (&) {
         autoed_subdeps => {},
         phonies => {},
         defaults => undef,
+        options => {},  # HASH of CODE or SCALAR
     );
      # Get directory of the calling file, which may not be cwd
     my @vdf = splitpath(rel2abs($file));
@@ -212,6 +209,20 @@ sub include {
             push @{$this_workflow->{subdeps}{$_}}, @{$workflow{subdeps}{$_}};
         }
         push @{$this_workflow->{auto_subdeps}}, @{$workflow{auto_subdeps}};
+    }
+}
+
+sub option ($$) {
+    %workflow or croak "option was called outside of a workflow";
+    my ($name, $ref) = @_;
+    if (ref $name eq 'ARRAY') {
+        &option($_, $ref) for @$name;
+    }
+    elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
+        $workflow{options}{$name} = $ref;
+    }
+    else {
+        croak "Second argument to option is not a SCALAR or CODE ref";
     }
 }
 
@@ -410,17 +421,33 @@ sub plan_workflow(@) {
 ##### RUNNING
 
 sub run_workflow {
-    my @args = grep {
-        my $res;
-        if (/^--([^=]*)(?:=(.*))?$/) {
-            $options{$1} = $2;
-            $res = 0;
+    my $double_minus = 0;
+    my @args;
+    for (@_) {
+        if ($double_minus) {
+            push @args, $_;
+        }
+        elsif ($_ eq '--') {
+            $double_minus = 1;
+        }
+        elsif (/^--([^=]*)(?:=(.*))?$/) {
+            my ($name, $val) = ($1, $2);
+            my $optop = $workflow{options}{$name};
+            if (not defined $optop) {
+                say "\e[31m✗\e[0mUnrecognized option --$name.";
+                exit 1;
+            }
+            elsif (ref $optop eq 'SCALAR') {
+                $$optop = $val;
+            }
+            else {  # CODE
+                $optop->($val);
+            }
         }
         else {
-            $res = 1;
+            push @args, $_;
         }
-        $res;
-    } @_;
+    }
     if (not @{$workflow{rules}}) {
         say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
         return 1;
