@@ -42,15 +42,15 @@ use subs qw(cwd chdir);
 use File::Spec::Functions qw(:ALL);
 
 our @ISA = 'Exporter';
-our @EXPORT = qw(make rule rules phony subdep defaults include option cwd chdir targetmatch run);
+our @EXPORT = qw(make rule phony subdep defaults include option cwd chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
 
 ##### GLOBALS
  # Caches the current working directory
 our $cwd = Cwd::cwd();
- # This variable is only defined inside a workflow definition.
-our %workflow;
+ # This variable is initialized on import.
+our %project;
  # This is set to 0 when recursing.
 our $this_is_root = 1;
  # Set once only.
@@ -63,49 +63,43 @@ my %modtimes;
 my $died_from_no_make = 0;
  # Defined later
 my %builtin_options;
-##### DEFINING WORKFLOWS
 
+##### STARTING
 
 sub import {
-    %workflow and croak "workflow was called inside a workflow (did you use 'do' instead of 'include'?)";
-    my ($package, $file, $line) = caller;
-    %workflow = (
-        caller_package => $package,
-        caller_file => $file,
-        caller_line => $line,
-        rules => [],
-        targets => {},
-        subdeps => {},
-        auto_subdeps => [],
-        autoed_subdeps => {},
-        phonies => {},
-        defaults => undef,
-        options => {%builtin_options},
-        made => 0,
-    );
-     # Get directory of the calling file, which may not be cwd
-    my @vdf = splitpath(rel2abs($file));
-    my $base = catpath($vdf[0], $vdf[1], '');
-    my $old_cwd = cwd;
-    chdir $base;
+    unless (%project) {
+        my ($package, $file, $line) = caller;
+        %project = (
+            caller_package => $package,
+            caller_file => $file,
+            caller_line => $line,
+            rules => [],
+            targets => {},
+            subdeps => {},
+            auto_subdeps => [],
+            autoed_subdeps => {},
+            phonies => {},
+            defaults => undef,
+            options => {%builtin_options},
+            made => 0,
+        );
+         # Get directory of the calling file, which may not be cwd
+        my @vdf = splitpath(rel2abs($file));
+        my $base = catpath($vdf[0], $vdf[1], '');
+        my $old_cwd = cwd;
+        chdir $base;
+    }
     MakePl->export_to_level(1, @_);
 }
 
-sub make () {
-    $workflow{made} = 1;
-    if ($this_is_root) {
-        exit(!run_workflow(@ARGV));
-    }
-    1;
-}
 
 END {
-    if (!$died_from_no_make and !$workflow{made}) {
-        warn "\e[31m✗\e[0m $workflow{caller_file} did not end with 'make;'\n";
+    if (!$died_from_no_make and !$project{made}) {
+        warn "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
     }
 }
 
-### DECLARING RULES
+##### DECLARING RULES
 
  # caller abstracted out because phony() delegates to this as well.
 sub rule_with_caller ($$$$$$) {
@@ -120,44 +114,34 @@ sub rule_with_caller ($$$$$$) {
         caller_line => $line,
         planned => 0,  # Intrusive state for the planning phase
     };
-    push @{$workflow{rules}}, $rule;
+    push @{$project{rules}}, $rule;
     for my $to (@{$rule->{to}}) {
-        push @{$workflow{targets}{realpath($to)}}, $rule;
+        push @{$project{targets}{realpath($to)}}, $rule;
     }
 }
 sub rule ($$$) {
-    %workflow or croak "rule was called outside of a workflow";
+    %project or croak "rule was called before importing MakePl";
     my ($to, $from, $recipe) = @_;
     my ($package, $file, $line) = caller;
     rule_with_caller($package, $file, $line, $to, $from, $recipe);
 }
 sub phony ($;$$) {
-    %workflow or croak "phony was called outside of a workflow";
+    %project or croak "phony was called before importing MakePl";
     @_ == 2 and croak "phony was given 2 arguments, but it must have either 1 or 3";
     my ($phony, $from, $recipe) = @_;
     for my $p (arrayify($phony)) {
-        $workflow{phonies}{realpath($p)} = 1;
+        $project{phonies}{realpath($p)} = 1;
     }
     if (defined $from) {
         my ($package, $file, $line) = caller;
         rule_with_caller($package, $file, $line, $phony, $from, $recipe);
     }
 }
-sub rules ($$) {
-    %workflow or croak "rules was called outside of a workflow";
-    my ($tofroms, $recipe) = @_;
-    ref $tofroms eq 'ARRAY' or croak "First argument to rules wasn't an ARRAY ref";
-    for (@{$tofroms}) {
-        @$_ == 2 or croak "Each of the elements of the first argument to rules must have two elements";
-        my ($package, $file, $line) = caller;
-        rule_with_caller($package, $file, $line, $_->[0], $_->[1], $recipe);
-    }
-}
 sub subdep ($;$) {
-    %workflow or croak "subdep was called outside of a workflow";
+    %project or croak "subdep was called before importing MakePl";
     my ($to, $from) = @_;
     if (ref $to eq 'CODE') {
-        push @{$workflow{auto_subdeps}}, {
+        push @{$project{auto_subdeps}}, {
             base => cwd,
             code => $to
         };
@@ -170,7 +154,7 @@ sub subdep ($;$) {
         };
         for my $to (@{$subdep->{to}}) {
             my $rp = realpath($to);
-            push @{$workflow{subdeps}{$rp}}, $subdep;
+            push @{$project{subdeps}{$rp}}, $subdep;
         }
     }
     else {
@@ -193,7 +177,7 @@ sub delazify {
 ##### OTHER DECLARATIONS
 
 sub defaults {
-    push @{$workflow{defaults}}, map realpath($_), @_;
+    push @{$project{defaults}}, map realpath($_), @_;
 }
 sub include {
     for (@_) {
@@ -209,9 +193,9 @@ sub include {
         next if grep $real eq $_, @included;
         push @included, $real;
 
-        my $this_workflow = \%workflow;
+        my $this_project = \%project;
         local $this_is_root = 0;
-        local %workflow;
+        local %project;
         do {
             package main;
             my $old_cwd = MakePl::cwd;
@@ -219,23 +203,23 @@ sub include {
             MakePl::chdir $old_cwd;
             $@ and die_status $@;
         };
-        if (!$workflow{made}) {
+        if (!$project{made}) {
             $died_from_no_make = 1;
-            die "\e[31m✗\e[0m $workflow{caller_file} did not end with 'make;'\n";
+            die "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
         }
-        return unless %workflow;  # Oops, it wasn't a make.pl, but we did it anyway
-         # merge workflows
-        push @{$this_workflow->{rules}}, @{$workflow{rules}};
-        for (keys %{$workflow{targets}}) {
-            push @{$this_workflow->{targets}{$_}}, @{$workflow{targets}{$_}};
+        return unless %project;  # Oops, it wasn't a make.pl, but we did it anyway
+         # merge projects
+        push @{$this_project->{rules}}, @{$project{rules}};
+        for (keys %{$project{targets}}) {
+            push @{$this_project->{targets}{$_}}, @{$project{targets}{$_}};
         }
-        $this_workflow->{phonies} = {%{$this_workflow->{phonies}}, %{$workflow{phonies}}};
-        for (keys %{$workflow{subdeps}}) {
-            push @{$this_workflow->{subdeps}{$_}}, @{$workflow{subdeps}{$_}};
+        $this_project->{phonies} = {%{$this_project->{phonies}}, %{$project{phonies}}};
+        for (keys %{$project{subdeps}}) {
+            push @{$this_project->{subdeps}{$_}}, @{$project{subdeps}{$_}};
         }
          # Our options override included options
-        $this_workflow->{options} = {%{$workflow{options}}, %{$this_workflow->{options}}};
-        push @{$this_workflow->{auto_subdeps}}, @{$workflow{auto_subdeps}};
+        $this_project->{options} = {%{$project{options}}, %{$this_project->{options}}};
+        push @{$this_project->{auto_subdeps}}, @{$project{auto_subdeps}};
     }
 }
 
@@ -245,27 +229,27 @@ sub include {
     help => {
         ref => sub {
             say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
-            my @custom = grep $workflow{options}{$_}{custom}, keys %{$workflow{options}};
+            my @custom = grep $project{options}{$_}{custom}, keys %{$project{options}};
             if (@custom) {
                 say "Custom options:";
                 for (sort @custom) {
-                    if (defined $workflow{options}{$_}{desc}) {
-                        say "    $workflow{options}{$_}{desc}";
+                    if (defined $project{options}{$_}{desc}) {
+                        say "    $project{options}{$_}{desc}";
                     }
                     else {
                         say "    --$_";
                     }
                 }
             }
-            my @general = grep !$workflow{options}{$_}{custom}, keys %{$workflow{options}};
+            my @general = grep !$project{options}{$_}{custom}, keys %{$project{options}};
             if (@general) {
                 say "General options:";
                 for (sort @general) {
-                    say "    $workflow{options}{$_}{desc}";
+                    say "    $project{options}{$_}{desc}";
                 }
             }
-            say "Final targets (use --list-targets to see all targets):";
-            for (sort grep target_is_final($_), keys %{$workflow{targets}}) {
+            say "Final targets:";
+            for (sort grep target_is_final($_), keys %{$project{targets}}) {
                 say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
             }
             exit 1;
@@ -276,7 +260,7 @@ sub include {
     'list-targets' => {
         ref => sub {
             say "\e[31m✗\e[0m All targets:";
-            for (sort keys %{$workflow{targets}}) {
+            for (sort keys %{$project{targets}}) {
                 say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
             }
             exit 1;
@@ -287,13 +271,13 @@ sub include {
 );
 
 sub option ($$;$) {
-    %workflow or croak "option was called outside of a workflow";
+    %project or croak "option was called before importing MakePl";
     my ($name, $ref, $desc) = @_;
     if (ref $name eq 'ARRAY') {
         &option($_, $ref, $desc) for @$name;
     }
     elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
-        $workflow{options}{$name} = {
+        $project{options}{$name} = {
             ref => $ref,
             desc => $desc,
             custom => 1
@@ -317,7 +301,7 @@ sub chdir ($) {
 
 sub targetmatch {
     my ($rx) = @_;
-    return grep $_ =~ $rx, map abs2rel($_), keys %{$workflow{targets}};
+    return grep $_ =~ $rx, map abs2rel($_), keys %{$project{targets}};
 }
 
 sub run (@) {
@@ -344,6 +328,7 @@ sub run (@) {
         die_status("☢ Failed command: @command");
     }
 }
+
 sub realpaths (@) {
     return map {
         my $r = realpath($_);
@@ -357,7 +342,7 @@ sub realpaths (@) {
 
 sub target_is_final ($) {
     my $old_cwd = cwd;
-    for (@{$workflow{rules}}) {
+    for (@{$project{rules}}) {
         chdir $_->{base};
         for (delazify($_->{from}, $_->{to})) {
             if (realpath($_) eq $_[0]) {
@@ -371,12 +356,12 @@ sub target_is_final ($) {
 }
 
 sub target_is_default ($) {
-    if (defined $workflow{defaults}) {
-        my $is = grep $_ eq $_[0], @{$workflow{defaults}};
+    if (defined $project{defaults}) {
+        my $is = grep $_ eq $_[0], @{$project{defaults}};
         return $is;
     }
     else {
-        my $rule = $workflow{rules}[0];
+        my $rule = $project{rules}[0];
         defined $rule or return 0;
         my $old_cwd = cwd;
         chdir $rule->{base};
@@ -419,7 +404,7 @@ sub debug_rule ($) {
  # These work with absolute paths.
 
 sub fexists {
-    return 0 if $workflow{phonies}{$_[0]};
+    return 0 if $project{phonies}{$_[0]};
     return -e $_[0];
 }
 sub modtime {
@@ -439,7 +424,7 @@ sub plan_target {
     my ($plan, $target) = @_;
      # Make sure the file exists or there's a rule for it
     my $rel = abs2rel($target, $original_base);
-    unless ($workflow{targets}{$target} or fexists($target)) {
+    unless ($project{targets}{$target} or fexists($target)) {
         my $mess = "☢ Cannot find or make $rel" . (@{$plan->{stack}} ? ", required by\n" : "\n");
         for my $rule (reverse @{$plan->{stack}}) {
             $mess .= "\t" . debug_rule($rule) . "\n";
@@ -447,18 +432,18 @@ sub plan_target {
         die_status $mess;
     }
      # In general, there should be only rule per target, but there can be more.
-    return grep plan_rule($plan, $_), @{$workflow{targets}{$target}};
+    return grep plan_rule($plan, $_), @{$project{targets}{$target}};
 }
 
 sub get_auto_subdeps {
     my $old_cwd = cwd;
     my @r = map {
         my $target = $_;
-        @{$workflow{autoed_subdeps}{$target} //= [
+        @{$project{autoed_subdeps}{$target} //= [
             map {
                 chdir $_->{base};
                 realpaths($_->{code}($target));
-            } @{$workflow{auto_subdeps}}
+            } @{$project{auto_subdeps}}
         ]}
     } @_;
     chdir $old_cwd;
@@ -471,7 +456,7 @@ sub add_subdeps {
      # Using this style of loop because @deps will keep expanding.
     for (my $i = 0; $i < @deps; $i++) {
         push @deps, grep { my $d = $_; not grep $d eq $_, @deps } get_auto_subdeps($deps[$i]);
-        for my $subdep (@{$workflow{subdeps}{$deps[$i]}}) {
+        for my $subdep (@{$project{subdeps}{$deps[$i]}}) {
             chdir $subdep->{base};
             $subdep->{from} = [delazify($subdep->{from}, $subdep->{to})];
             push @deps, grep { my $d = $_; not grep $d eq $_, @deps } realpaths(@{$subdep->{from}});
@@ -522,24 +507,23 @@ sub plan_rule {
     return $stale;
 }
 
-sub plan_workflow(@) {
-    my (@args) = @_;
-    my $plan = init_plan();
-    if (@args) {
-        grep plan_target($plan, realpath($_)), @args;
-    }
-    elsif ($workflow{defaults}) {
-        grep plan_target($plan, $_), @{$workflow{defaults}};
-    }
-    else {
-        plan_rule($plan, $workflow{rules}[0]);
-    }
-    return @{$plan->{program}};
-}
-
 ##### RUNNING
 
-sub run_workflow {
+sub make () {
+    if ($project{made}) {
+        say "\e[31m✗\e[0m make was called twice in the same project.";
+        exit 1;
+    }
+    $project{made} = 1;
+    if ($this_is_root) {
+        my @args = make_cmdline(@ARGV);
+        my @program = make_plan(@args);
+        exit(!make_execute(@program));
+    }
+    1;
+}
+
+sub make_cmdline (@) {
     my $double_minus = 0;
     my @args;
     eval {
@@ -552,9 +536,9 @@ sub run_workflow {
             }
             elsif (/^--([^=]*)(?:=(.*))?$/) {
                 my ($name, $val) = ($1, $2);
-                my $optop = $workflow{options}{$name};
+                my $optop = $project{options}{$name};
                 if (not defined $optop) {
-                    if (%{$workflow{options}}) {
+                    if (%{$project{options}}) {
                         say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
                     }
                     else {
@@ -579,15 +563,36 @@ sub run_workflow {
         say "\e[31m✗\e[0m Nothing was done due to command-line error.";
         return 0;
     }
-    if (not @{$workflow{rules}}) {
-        say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
-        return 1;
-    }
-    my @program = eval { plan_workflow(@args) };
+    return @args;
+}
+
+sub make_plan (@) {
+    my (@args) = @_;
+    my $plan = init_plan();
+    eval {
+        if (@args) {
+            grep plan_target($plan, realpath($_)), @args;
+        }
+        elsif ($project{defaults}) {
+            grep plan_target($plan, $_), @{$project{defaults}};
+        }
+        else {
+            plan_rule($plan, $project{rules}[0]);
+        }
+    };
     if ($@) {
         warn $@ unless "$@" eq "\n";
         say "\e[31m✗\e[0m Nothing was done due to error.";
         return 0;
+    }
+    return @{$plan->{program}};
+}
+
+sub make_execute (@) {
+    my @program = @_;
+    if (not @{$project{rules}}) {
+        say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
+        return 1;
     }
     if (not @program) {
         say "\e[32m✓\e[0m All up to date.";

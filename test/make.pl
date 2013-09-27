@@ -10,6 +10,7 @@ rule 'to', 'from', sub {
     run "cat from > to";
 };
 phony 'clean', '', sub {
+    no autodie;
     unlink 'to';
 };
 
