@@ -42,7 +42,7 @@ use subs qw(cwd chdir);
 use File::Spec::Functions qw(:ALL);
 
 our @ISA = 'Exporter';
-our @EXPORT = qw(make rule phony subdep defaults include option cwd chdir targetmatch run);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
 
@@ -63,6 +63,8 @@ my %modtimes;
 my $died_from_no_make = 0;
  # Defined later
 my %builtin_options;
+ # Taken as needed from the command line.
+our %options;
 
 ##### STARTING
 
@@ -80,6 +82,7 @@ sub import {
             autoed_subdeps => {},
             phonies => {},
             defaults => undef,
+            configs => [],
             options => {%builtin_options},
             made => 0,
         );
@@ -234,6 +237,114 @@ sub include {
 
 ##### CONFIGURATION
 
+sub corrupted { return "Corrupted config file $_[0]$_[1]; please delete it and try again.\n"; }
+sub read_config {
+    my ($file, $str) = @_;
+    my ($val, $rest) = read_thing($file, $str);
+    $rest eq '' or die corrupted($file, " (extra junk at end)");
+    return $val;
+}
+sub read_thing {
+    my ($file, $s) = @_;
+    my $string_rx = qr/"((?:\\\\|\\"|[^\\"])*)"/s;
+    if ($s =~ s/^\{//) {  # Hash
+        my %r;
+        while (1) {
+            $s =~ s/^$string_rx://
+                or die corrupted($file, " (didn't find key after {)");
+            my $key = $1;
+            $key =~ s/\\([\\"])/$1/g;
+            (my $val, $s) = read_thing($file, $s);
+            $r{$key} = $val;
+            next if $s =~ s/^,//;
+            $s =~ s/^}//
+                or die corrupted($file, " (unrecognized char in hash)");
+            return (\%r, $s);
+        }
+    }
+    elsif ($s =~ s/^\[//) {  # Array
+        my @r;
+        while (1) {
+            (my $val, $s) = read_thing($file, $s);
+            push @r, $val;
+            next if $s =~ s/^,//;
+            $s =~ s/^]//
+                or die corrupted($file, " (unrecognized char in array)");
+            return (\@r, $s);
+        }
+    }
+    elsif ($s =~ /^"/) {  # String
+        $s =~ s/^$string_rx//
+            or die corrupted($file, " (malformed string or something)");
+        my $r = $1;
+        $r =~ s/\\([\\"])/$1/g;
+        return ($r, $s);
+    }
+    elsif ($s =~ s/^null//) {
+        return (undef, $s);
+    }
+    else {
+        die corrupted($file, " (unknown character in term position)");
+    }
+}
+sub show_thing {
+    my ($thing) = @_;
+    if (not defined $thing) {
+        return 'null';
+    }
+    elsif (ref $thing eq 'HASH') {
+        my $r = '{';
+        $r .= join ',', map {
+            my $k = $_;
+            $k =~ s/([\\"])/\\$1/g;
+            "\"$k\":" . show_thing($thing->{$_});
+        } sort keys %$thing;
+        return $r . '}';
+    }
+    elsif (ref $thing eq 'ARRAY') {
+        return '[' . (join ',', map show_thing($_), @$thing) . ']';
+    }
+    elsif (ref $thing eq '') {
+        $thing =~ s/([\\"])/\\$1/g;
+        return "\"$thing\"";
+    }
+    else {
+        croak "Cannot serialize object of ref type '" . ref $thing . "'";
+    }
+}
+
+sub config {
+    %project or croak "config was called before importing MakePl";
+    my ($filename, $var, $routine) = @_;
+    grep ref $var eq $_, qw(SCALAR ARRAY HASH)
+        or croak "config's second argument is not a SCALAR, ARRAY, or HASH ref (It's a " . ref($var) . " ref)";
+    !defined $routine or ref $routine eq 'CODE'
+        or croak "config's third argument is not a CODE ref";
+    push $project{configs}, {
+        base => cwd,
+        filename => $filename,
+        var => $var,
+        routine => $routine
+    };
+     # Read into $var immediately
+    if (-e $filename) {
+        my $str = slurp($filename);
+        chomp $str;
+        my $val = read_config($filename, $str);
+        if (ref $var eq 'SCALAR') {
+            $$var = $val;
+        }
+        elsif (ref $var eq 'ARRAY') {
+            ref $val eq 'ARRAY' or die corrupted($filename, " (expected ARRAY, got " . ref($val) . ")");
+            @$var = @$val;
+        }
+        elsif (ref $var eq 'HASH') {
+            ref $val eq 'HASH' or die corrupted($filename, " (expected HASH, got " . ref($val) . ")");
+            %$var = %$val;
+        }
+    }
+}
+
 %builtin_options = (
     help => {
         ref => sub {
@@ -284,6 +395,7 @@ sub option ($$;$) {
     my ($name, $ref, $desc) = @_;
     if (ref $name eq 'ARRAY') {
         &option($_, $ref, $desc) for @$name;
+        return;
     }
     elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
         $project{options}{$name} = {
@@ -294,6 +406,28 @@ sub option ($$;$) {
     }
     else {
         croak "Second argument to option is not a SCALAR or CODE ref";
+    }
+     # Immediately find option.
+    unless (%options) {
+        for (@ARGV) {
+            if ($_ eq '--') {
+                last;
+            }
+            elsif (/^--no-([^=]+)$/) {
+                $options{$1} = 0;
+            }
+            elsif (/^--([^=]+)(?:=(.*))?$/) {
+                $options{$1} = $2 // 1;
+            }
+        }
+    }
+    if (exists $options{$name}) {
+        if (ref $ref eq 'SCALAR') {
+            $$ref = $options{$name};
+        }
+        elsif (ref $ref eq 'CODE') {
+            $ref->($options{$name});
+        }
     }
 }
 
@@ -384,6 +518,19 @@ sub target_is_default ($) {
         chdir $old_cwd;
         return 0;
     }
+}
+
+sub slurp {
+    open my $F, '<', $_[0];
+    local $/;
+    my $r = <$F>;
+    close $F;
+    return $r;
+}
+sub splat {
+    open my $F, '>', $_[0];
+    print $F $_[1];
+    close $F;
 }
 
 ##### PRINTING ETC.
@@ -527,8 +674,10 @@ sub make () {
     $project{made} = 1;
     if ($this_is_root) {
         my @args = make_cmdline(@ARGV);
+        make_config();
         my @program = make_plan(@args);
-        exit(!make_execute(@program));
+        make_execute(@program);
+        exit 0;
     }
     1;
 }
@@ -546,8 +695,8 @@ sub make_cmdline (@) {
             }
             elsif (/^--([^=]*)(?:=(.*))?$/) {
                 my ($name, $val) = ($1, $2);
-                my $optop = $project{options}{$name};
-                if (not defined $optop) {
+                my $opt = $project{options}{$name};
+                if (not defined $opt) {
                     if (%{$project{options}}) {
                         say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
                     }
@@ -556,12 +705,10 @@ sub make_cmdline (@) {
                     }
                     exit 1;
                 }
-                elsif (ref $optop->{ref} eq 'SCALAR') {
-                    ${$optop->{ref}} = $val;
+                elsif (defined $opt and not $opt->{custom}) {
+                    $opt->{ref}($val);
                 }
-                else {  # CODE
-                    $optop->{ref}($val);
-                }
+                 # We already processed custom options.
             }
             else {
                 push @args, $_;
@@ -574,6 +721,28 @@ sub make_cmdline (@) {
         exit 1;
     }
     return @args;
+}
+
+sub make_config () {
+    for (@{$project{configs}}) {
+        chdir $_->{base};
+        my ($old, $new);
+        my $generate = 1;
+        if (-e $_->{filename}) {
+            my $old = slurp($_->{filename});
+            chomp $old;
+            $new = show_thing(ref $_->{var} eq 'SCALAR' ? ${$_->{var}} : $_->{var});
+            $generate = 0 if $new eq $old;
+        }
+        if ($generate) {
+            status "⚒ $_->{filename}";
+            if (defined ($_->{routine})) {
+                $_->{routine}();
+                $new = show_thing(ref $_->{var} eq 'SCALAR' ? ${$_->{var}} : $_->{var});
+            }
+            splat($_->{filename}, "$new\n");
+        }
+    }
 }
 
 sub make_plan (@) {
@@ -593,7 +762,7 @@ sub make_plan (@) {
     if ($@) {
         warn $@ unless "$@" eq "\n";
         say "\e[31m✗\e[0m Nothing was done due to error.";
-        return 0;
+        exit 1;
     }
     return @{$plan->{program}};
 }
@@ -602,28 +771,27 @@ sub make_execute (@) {
     my @program = @_;
     if (not @{$project{rules}}) {
         say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
-        return 1;
     }
-    if (not @program) {
+    elsif (not @program) {
         say "\e[32m✓\e[0m All up to date.";
-        return 1;
     }
-    my $old_cwd = cwd;
-    for my $rule (@program) {
-        chdir rel2abs($rule->{base});
-        status "⚙ ", show_rule($rule);
-        delazify($rule);
-        eval { $rule->{recipe}->($rule->{to}, $rule->{from}) };
-        if ($@) {
-            warn $@ unless "$@" eq "\n";
-            say "\e[31m✗\e[0m Did not finish due to error.";
-            chdir $old_cwd;
-            return 0;
+    else {
+        my $old_cwd = cwd;
+        for my $rule (@program) {
+            chdir rel2abs($rule->{base});
+            status "⚙ ", show_rule($rule);
+            delazify($rule);
+            eval { $rule->{recipe}->($rule->{to}, $rule->{from}) };
+            if ($@) {
+                warn $@ unless "$@" eq "\n";
+                say "\e[31m✗\e[0m Did not finish due to error.";
+                chdir $old_cwd;
+                exit 1;
+            }
         }
+        say "\e[32m✓\e[0m Done.";
+        chdir $old_cwd;
     }
-    say "\e[32m✓\e[0m Done.";
-    chdir $old_cwd;
-    return 1;
 }
 
 
