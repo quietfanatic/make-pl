@@ -1,9 +1,9 @@
 
-Make_pl - Very portable build system in Perl
+MakePl - Very portable build system in Perl
 https://github.com/quietfanatic/make-pl
 
 Installation:
-  Just grab Make_pl.pm and stuff it in your project directory.
+  Just grab MakePl.pm and stuff it in your project directory.
   This has no dependencies besides Perl >= 5.10 and its core modules.
   (I suppose if you want you can put this in some library directory with all
   your other DarkPAN modules, but that will reduce your project's portability.)
@@ -12,7 +12,7 @@ Usage:
   To run a make.pl:
     - ./make.pl <options> <targets>
   To generate a bare-bones make.pl:
-    - perl Make_pl.pm <directory (defaults to .)>
+    - perl MakePl.pm <directory (defaults to .)>
 
 Quick Reference:
   make;
@@ -57,11 +57,11 @@ Quick Reference:
        gives a non-zero exit status.
 
 Working Directories:
-  Make_pl tries to make working directories a lexical concept, so that things
+  MakePl tries to make working directories a lexical concept, so that things
   just work how you expect them to.
     - All relative filenames given to the API are relative to the current
        working directory.
-    - When you import Make_pl, the working directory is always set to the same
+    - When you import MakePl, the working directory is always set to the same
        directory that the make.pl is in, no matter where you invoked it from.
     - All routines passed to a rule will be run in the same working
        directory that the rule was defined in.
@@ -97,9 +97,9 @@ Recommendations:
      is correctly formed.  To make sure your make.pl can be run anywhere, put
      this at the top:
        use FindBin;
-       use if !$^S, lib => "$FindBin::Bin/<directory containing Make_pl.pm>";
-       use Make_pl;
-     If you used 'perl Make_pl.pm' to generate a make.pl, it'll have done this
+       use lib "$FindBin::Bin/<directory containing MakePl.pm>";
+       use MakePl;
+     If you used 'perl MakePl.pm' to generate a make.pl, it'll have done this
      for you.
   - Because your build script is in a real programming language and not a DSL,
      you can actually do real abstraction.  Take a look at "sample_make.pl"

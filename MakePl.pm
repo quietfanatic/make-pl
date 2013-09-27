@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
- # Make_pl - Portable drop-in build system
+ # MakePl - Portable drop-in build system
  # https://github.com/quietfanatic/make-pl
  # (Just copy this into your project directory somewhere)
 
@@ -28,7 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 =cut
 
-package Make_pl;
+package MakePl;
 
 use strict;
 use warnings; no warnings 'once';
@@ -86,7 +86,7 @@ sub import {
     my $base = catpath($vdf[0], $vdf[1], '');
     my $old_cwd = cwd;
     chdir $base;
-    Make_pl->export_to_level(1, @_);
+    MakePl->export_to_level(1, @_);
 }
 
 sub make () {
@@ -212,9 +212,9 @@ sub include {
         local %workflow;
         do {
             package main;
-            my $old_cwd = Make_pl::cwd;
+            my $old_cwd = MakePl::cwd;
             do $file;
-            Make_pl::chdir $old_cwd;
+            MakePl::chdir $old_cwd;
             $@ and die_status $@;
         };
         if (!$workflow{made}) {
@@ -619,16 +619,16 @@ if ($^S == 0) {  # We've been called directly
 use strict;
 use warnings;
 use FindBin;
-use if !\$^S, lib => "\$FindBin::Bin/$path_to_pm";
-use Make_pl;
+use lib "\$FindBin::Bin/$path_to_pm";
+use MakePl;
 
-workflow {
-     # Sample rules
-    rule \$program, \$main, sub {
-        run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
-    };
-    rule 'clean', [], sub { unlink \$program; };
+ # Sample rules
+rule \$program, \$main, sub {
+    run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
 };
+rule 'clean', [], sub { unlink \$program; };
+
+make;
 END
     chmod 0755, $MAKEPL;
     close $MAKEPL;
