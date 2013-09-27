@@ -287,6 +287,27 @@ sub target_is_final ($) {
     return 1;
 }
 
+sub target_is_default ($) {
+    if (defined $workflow{defaults}) {
+        my $is = grep $_ eq $_[0], @{$workflow{defaults}};
+        return $is;
+    }
+    else {
+        my $rule = $workflow{rules}[0];
+        defined $rule or return 0;
+        my $old_cwd = cwd;
+        Cwd::chdir $rule->{base};
+        for (@{$rule->{to}}) {
+            if (realpath($_) eq $_[0]) {
+                Cwd::chdir $old_cwd;
+                return 1;
+            }
+        }
+        Cwd::chdir $old_cwd;
+        return 0;
+    }
+}
+
 ##### PRINTING ETC.
 
 sub directory_prefix {
@@ -464,7 +485,7 @@ sub run_workflow {
                             }
                             say "Final targets (use --list-targets to see all targets):";
                             for (sort grep target_is_final($_), keys %{$workflow{targets}}) {
-                                say "    ", abs2rel($_);
+                                say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
                             }
                         }
                         else {
@@ -475,7 +496,7 @@ sub run_workflow {
                     elsif ($name eq 'list-targets') {
                         say "\e[31m✗\e[0m All targets:";
                         for (sort keys %{$workflow{targets}}) {
-                            say "    ", abs2rel($_);
+                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
                         }
                         exit 1;
                     }
