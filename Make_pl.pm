@@ -434,7 +434,25 @@ sub run_workflow {
             my ($name, $val) = ($1, $2);
             my $optop = $workflow{options}{$name};
             if (not defined $optop) {
-                say "\e[31m✗\e[0mUnrecognized option --$name.";
+                if ($name eq 'help') {
+                    if (%{$workflow{options}}) {
+                        say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
+                        say "Available options are:";
+                        for (keys %{$workflow{options}}) {
+                            say "    --$_";
+                        }
+                    }
+                    else {
+                        say "\e[31m✗\e[0m Usage: $0 <targets>";
+                    }
+                    exit 1;
+                }
+                if (%{$workflow{options}}) {
+                    say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
+                }
+                else {
+                    say "\e[31m✗\e[0m Unrecognized option --$name.  This script takes no options.";
+                }
                 exit 1;
             }
             elsif (ref $optop eq 'SCALAR') {

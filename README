@@ -41,7 +41,7 @@ Quick Reference:
     - Include the targets and rules in another make.pl.  Relative filenames,
        working directories, etc. all do The Right Thing.  Cyclical includes
        are fine.
-  option <name>, <routine>;
+  option <name>, <routine>, <description?>;
     - Allows an option to be specified on the command line, like "--<name>" or
        "--<name>=<value>".  <routine> can be a code ref, which will be called
        with <value> when the option is provided, or a scalar ref, which will
