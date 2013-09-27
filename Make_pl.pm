@@ -501,6 +501,10 @@ sub run_workflow {
 ##### Generate a make.pl scaffold
 
 if ($^S == 0) {  # We've been called directly
+    if (@ARGV != 1 or $ARGV[0] eq '--help') {
+        say "\e[31m✗\e[0m Usage: perl $0 <directory (default: .)>";
+        exit 1;
+    }
     my $loc = $ARGV[0];
     defined $loc or $loc = cwd;
     my $dir;
