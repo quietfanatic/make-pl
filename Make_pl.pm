@@ -31,7 +31,7 @@ THE SOFTWARE.
 package Make_pl;
 
 use strict;
-use warnings;
+use warnings; no warnings 'once';
 use feature qw(switch say);
 use autodie;
 no autodie 'chdir';
@@ -42,6 +42,10 @@ use File::Spec::Functions qw(:ALL);
 
 our @EXPORT = qw(workflow rule rules phony subdep defaults include chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
+
+ # Options with passed on the command-line to your make.pl will be stuffed into here.  The only options recognized are of the form "--opt" and "--opt=val".  The "--" is removed.  An option with a '=' exists but is undef.
+our %options = ();
+
 
  # This variable is only defined inside a workflow definition.
 our %workflow;
@@ -406,7 +410,17 @@ sub plan_workflow(@) {
 ##### RUNNING
 
 sub run_workflow {
-    my (@args) = @_;
+    my @args = grep {
+        my $res;
+        if (/^--([^=]*)(?:=(.*))?$/) {
+            $options{$1} = $2;
+            $res = 0;
+        }
+        else {
+            $res = 1;
+        }
+        $res;
+    } @_;
     if (not @{$workflow{rules}}) {
         say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
         return 1;
@@ -446,7 +460,7 @@ if ($^S == 0) {  # We've been called directly
     defined $loc or $loc = cwd;
     my $dir;
     if (-d $loc) {
-        $loc = "$loc/make.pl"
+        $loc = "$loc/make.pl";
         $dir = $loc;
     }
     elsif (-e $loc) {
