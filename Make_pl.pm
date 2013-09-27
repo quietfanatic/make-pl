@@ -442,16 +442,26 @@ sub run_workflow {
 ##### Generate a make.pl scaffold
 
 if ($^S == 0) {  # We've been called directly
-    my $dir = $ARGV[0];
-    defined $dir or $dir = cwd;
-    -d $dir or die "\e[31m✗\e[0m $dir doesn't seem to be a directory.";
-    require FindBin;
-    my $path_to_pm = abs2rel($FindBin::Bin, $dir);
-    if (-e "$dir/make.pl") {
-        say "\e[31m✗\e[0m Did not generate $dir/make.pl because it already exists.";
+    my $loc = $ARGV[0];
+    defined $loc or $loc = cwd;
+    my $dir;
+    if (-d $loc) {
+        $loc = "$loc/make.pl"
+        $dir = $loc;
+    }
+    elsif (-e $loc) {
+        say "\e[31m✗\e[0m Did not generate $loc because it already exists.";
         exit 1;
     }
-    open my $MAKEPL, '>', "$dir/make.pl";
+    elsif ($loc =~ /^(.*)\/[^\/]*$/) {
+        $dir = $1;
+    }
+    else {
+        $dir = cwd;
+    }
+    require FindBin;
+    my $path_to_pm = abs2rel($FindBin::Bin, $dir);
+    open my $MAKEPL, '>', "$loc";
     print $MAKEPL <<"END";
 #!/usr/bin/perl
 use strict;
@@ -464,13 +474,13 @@ workflow {
      # Sample rules
     rule \$program, \$main, sub {
         run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
-    }
+    };
     rule 'clean', [], sub { unlink \$program; };
 };
 END
     chmod 0755, $MAKEPL;
     close $MAKEPL;
-    say "\e[32m✓\e[0m Generated $dir/make.pl.";
+    say "\e[32m✓\e[0m Generated $loc.";
 }
 
 1;
