@@ -212,14 +212,14 @@ sub include {
     }
 }
 
-sub option ($$) {
+sub option ($$;$) {
     %workflow or croak "option was called outside of a workflow";
-    my ($name, $ref) = @_;
+    my ($name, $ref, $desc) = @_;
     if (ref $name eq 'ARRAY') {
-        &option($_, $ref) for @$name;
+        &option($_, $ref, $desc) for @$name;
     }
     elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
-        $workflow{options}{$name} = $ref;
+        $workflow{options}{$name} = [$ref, $desc];
     }
     else {
         croak "Second argument to option is not a SCALAR or CODE ref";
@@ -423,48 +423,60 @@ sub plan_workflow(@) {
 sub run_workflow {
     my $double_minus = 0;
     my @args;
-    for (@_) {
-        if ($double_minus) {
-            push @args, $_;
-        }
-        elsif ($_ eq '--') {
-            $double_minus = 1;
-        }
-        elsif (/^--([^=]*)(?:=(.*))?$/) {
-            my ($name, $val) = ($1, $2);
-            my $optop = $workflow{options}{$name};
-            if (not defined $optop) {
-                if ($name eq 'help') {
-                    if (%{$workflow{options}}) {
-                        say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
-                        say "Available options are:";
-                        for (keys %{$workflow{options}}) {
-                            say "    --$_";
+    eval {
+        for (@_) {
+            if ($double_minus) {
+                push @args, $_;
+            }
+            elsif ($_ eq '--') {
+                $double_minus = 1;
+            }
+            elsif (/^--([^=]*)(?:=(.*))?$/) {
+                my ($name, $val) = ($1, $2);
+                my $optop = $workflow{options}{$name};
+                if (not defined $optop) {
+                    if ($name eq 'help') {
+                        if (%{$workflow{options}}) {
+                            say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
+                            say "Available options are:";
+                            for (keys %{$workflow{options}}) {
+                                if (defined $workflow{options}{$_}[1]) {
+                                    say "    $workflow{options}{$_}[1]";
+                                }
+                                else {
+                                    say "    --$_";
+                                }
+                            }
                         }
+                        else {
+                            say "\e[31m✗\e[0m Usage: $0 <targets>";
+                        }
+                        exit 1;
+                    }
+                    if (%{$workflow{options}}) {
+                        say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
                     }
                     else {
-                        say "\e[31m✗\e[0m Usage: $0 <targets>";
+                        say "\e[31m✗\e[0m Unrecognized option --$name.  This script takes no options.";
                     }
                     exit 1;
                 }
-                if (%{$workflow{options}}) {
-                    say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
+                elsif (ref $optop->[0] eq 'SCALAR') {
+                    ${$optop->[0]} = $val;
                 }
-                else {
-                    say "\e[31m✗\e[0m Unrecognized option --$name.  This script takes no options.";
+                else {  # CODE
+                    $optop->[0]($val);
                 }
-                exit 1;
             }
-            elsif (ref $optop eq 'SCALAR') {
-                $$optop = $val;
-            }
-            else {  # CODE
-                $optop->($val);
+            else {
+                push @args, $_;
             }
         }
-        else {
-            push @args, $_;
-        }
+    };
+    if ($@) {
+        warn $@ unless "$@" eq "\n";
+        say "\e[31m✗\e[0m Nothing was done due to command-line error.";
+        return 0;
     }
     if (not @{$workflow{rules}}) {
         say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
