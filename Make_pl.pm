@@ -35,13 +35,14 @@ use warnings; no warnings 'once';
 use feature qw(switch say);
 use autodie;
 no autodie 'chdir';
-use Exporter qw(import);
+use Exporter;
 use Carp qw(croak);
 use Cwd qw(realpath);
 use subs qw(cwd chdir);
 use File::Spec::Functions qw(:ALL);
 
-our @EXPORT = qw(workflow rule rules phony subdep defaults include option cwd chdir targetmatch run);
+our @ISA = 'Exporter';
+our @EXPORT = qw(make rule rules phony subdep defaults include option cwd chdir targetmatch run);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
 
@@ -62,9 +63,8 @@ my %modtimes;
 
 ##### DEFINING WORKFLOWS
 
-sub workflow (&) {
+sub import {
     %workflow and croak "workflow was called inside a workflow (did you use 'do' instead of 'include'?)";
-    my ($definition) = @_;
     my ($package, $file, $line) = caller;
     %workflow = (
         caller_package => $package,
@@ -83,9 +83,11 @@ sub workflow (&) {
     my @vdf = splitpath(rel2abs($file));
     my $base = catpath($vdf[0], $vdf[1], '');
     my $old_cwd = cwd;
-    chdir($base);
-        $definition->();
-    chdir($old_cwd);
+    chdir $base;
+    Make_pl->export_to_level(1, @_);
+}
+
+sub make () {
     if ($this_is_root) {
         exit(!run_workflow(@ARGV));
     }
@@ -185,7 +187,7 @@ sub defaults {
 sub include {
     for (@_) {
         my $file = $_;
-        -e $file or croak "Cannot include $file because it doesn't exist.";
+        -e $file or croak "Cannot include $file because it doesn't exist";
         if (-d $file) {
             my $makepl = catfile($file, 'make.pl');
             next unless -e $makepl;
@@ -201,7 +203,9 @@ sub include {
         local %workflow;
         do {
             package main;
+            my $old_cwd = Make_pl::cwd;
             do $file;
+            Make_pl::chdir $old_cwd;
             $@ and die_status $@;
         };
         return unless %workflow;  # Oops, it wasn't a make.pl, but we did it anyway

@@ -15,8 +15,8 @@ Usage:
     - perl Make_pl.pm <directory (defaults to .)>
 
 Quick Reference:
-  workflow { <rules and stuff> };
-    - Put all your rules and stuff in here.
+  make;
+    - Put this at the end of the script, whether standalone or included.
   rule <targets>, <dependencies>, <routine>;
     - Defines a compilation rule like in a Makefile.
        - <targets> can be a single filename or an array ref of filenames.
@@ -61,9 +61,8 @@ Working Directories:
   just work how you expect them to.
     - All relative filenames given to the API are relative to the current
        working directory.
-    - At the beginning of a workflow { } block, the working directory is always
-       the same directory that the make.pl is in, no matter where you invoked
-       it from.
+    - When you import Make_pl, the working directory is always set to the same
+       directory that the make.pl is in, no matter where you invoked it from.
     - All routines passed to a rule will be run in the same working
        directory that the rule was defined in.
     - Even if one make.pl includes another make.pl, each uses filenames
