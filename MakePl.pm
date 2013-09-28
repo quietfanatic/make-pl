@@ -66,6 +66,8 @@ our $original_base = cwd;
 our %included = (realpath($0) => 1);
  # A cache of file modification times.  It's probably safe to keep until exit.
 my %modtimes;
+ # Just keep track.
+my %configs;
  # Defined later
 my %builtin_options;
 my %custom_options;
@@ -100,6 +102,9 @@ sub import {
         chdir $base;
     }
     MakePl->export_to_level(1, @_);
+     # Also import strict and warnings.
+    strict->import();
+    warnings->import();
 }
 
 
@@ -334,6 +339,7 @@ sub config {
     };
     push @{$project{rules}}, $rule;
     push @{$project{targets}{realpath($filename)}}, $rule;
+    $configs{realpath($filename)} = 1;
      # Read into $var immediately
     if (-e $filename) {
         my $str = slurp($filename);
@@ -610,7 +616,9 @@ sub show_rule ($) {
         return "@{$_[0]{to}} ← " . join ' ', map abs2rel($_), $_[0]{deps};
     }
     else {
-        return "@{$_[0]{to}} ← " . join ' ', @{$_[0]{from}};
+        my @froms = grep !$configs{realpath($_)}, @{$_[0]{from}};
+        @froms or @froms = @{$_[0]{from}};
+        return "@{$_[0]{to}} ← " . join ' ', @froms;
     }
 }
 sub debug_rule ($) {
@@ -867,15 +875,13 @@ if ($^S == 0) {  # We've been called directly
     else {
         $dir = cwd;
     }
-    require FindBin;
-    my $path_to_pm = abs2rel($FindBin::Bin, $dir);
+    my $path_to_pm = abs2rel(rel2abs(__FILE__), $dir);
+    $path_to_pm =~ s/[\\']/\\$1/g;
     open my $MAKEPL, '>', "$loc";
     print $MAKEPL <<"END";
 #!/usr/bin/perl
-use strict;
-use warnings;
-use FindBin;
-use lib "\$FindBin::Bin/$path_to_pm";
+use File::Spec::Functions ':ALL';
+use lib catpath((splitpath rel2abs __FILE__)[0,1], '$path_to_pm');
 use MakePl;
 
  # Sample rules
