@@ -59,8 +59,6 @@ our $original_base = cwd;
 our @included = realpath($0);
  # A cache of file modification times.  It's probably safe to keep until exit.
 my %modtimes;
- # For preventing false error messages
-my $died_from_no_make = 0;
  # Defined later
 my %builtin_options;
  # Taken as needed from the command line.
@@ -97,7 +95,7 @@ sub import {
 
 
 END {
-    if (!$died_from_no_make and !$project{made}) {
+    if ($? == 0 and !$project{made}) {
         warn "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
     }
 }
@@ -216,7 +214,6 @@ sub include {
             $@ and die_status $@;
         };
         if (!$project{made}) {
-            $died_from_no_make = 1;
             die "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
         }
         return unless %project;  # Oops, it wasn't a make.pl, but we did it anyway
@@ -237,7 +234,7 @@ sub include {
 
 ##### CONFIGURATION
 
-sub corrupted { return "Corrupted config file $_[0]$_[1]; please delete it and try again.\n"; }
+sub corrupted { return "\e[31m✗\e[0m Corrupted config file $_[0]$_[1]; please delete it and try again.\n"; }
 sub read_config {
     my ($file, $str) = @_;
     my ($val, $rest) = read_thing($file, $str);
@@ -249,29 +246,35 @@ sub read_thing {
     my $string_rx = qr/"((?:\\\\|\\"|[^\\"])*)"/s;
     if ($s =~ s/^\{//) {  # Hash
         my %r;
-        while (1) {
-            $s =~ s/^$string_rx://
-                or die corrupted($file, " (didn't find key after {)");
-            my $key = $1;
-            $key =~ s/\\([\\"])/$1/g;
-            (my $val, $s) = read_thing($file, $s);
-            $r{$key} = $val;
-            next if $s =~ s/^,//;
-            $s =~ s/^}//
-                or die corrupted($file, " (unrecognized char in hash)");
-            return (\%r, $s);
+        unless ($s =~ s/^}//) {
+            while (1) {
+                $s =~ s/^$string_rx://
+                    or die corrupted($file, " (didn't find key after {)");
+                my $key = $1;
+                $key =~ s/\\([\\"])/$1/g;
+                my $val;
+                ($val, $s) = read_thing($file, $s);
+                $r{$key} = $val;
+                next if $s =~ s/^,//;
+                last if $s =~ s/^}//;
+                die corrupted($file, " (unrecognized char in hash)");
+            }
         }
+        return (\%r, $s);
     }
     elsif ($s =~ s/^\[//) {  # Array
         my @r;
-        while (1) {
-            (my $val, $s) = read_thing($file, $s);
-            push @r, $val;
-            next if $s =~ s/^,//;
-            $s =~ s/^]//
-                or die corrupted($file, " (unrecognized char in array)");
-            return (\@r, $s);
+        unless ($s =~ s/^]//) {
+            while (1) {
+                my $val;
+                ($val, $s) = read_thing($file, $s);
+                push @r, $val;
+                next if $s =~ s/^,//;
+                last if $s =~ s/^]//;
+                die corrupted($file, " (unrecognized char in array)");
+            }
         }
+        return (\@r, $s);
     }
     elsif ($s =~ /^"/) {  # String
         $s =~ s/^$string_rx//
@@ -459,7 +462,7 @@ sub run (@) {
         }
          # As per perldoc -f system
         if ($? == -1) {
-            status(print "☢ Couldn't start command: $!");
+            status("☢ Couldn't start command: $!");
         }
         elsif ($? & 127) {
             status(sprintf "☢ Command died with signal %d, %s coredump",
@@ -539,6 +542,8 @@ sub directory_prefix {
     my ($d, $base) = @_;
     $d //= cwd;
     $base //= $original_base;
+    $d =~ s/\/*$//;
+    $base =~ s/\/*$//;
     return $d eq $base
         ? ''
         : '[' . abs2rel($d, $base) . '/] ';
@@ -724,24 +729,31 @@ sub make_cmdline (@) {
 }
 
 sub make_config () {
-    for (@{$project{configs}}) {
-        chdir $_->{base};
-        my ($old, $new);
-        my $generate = 1;
-        if (-e $_->{filename}) {
-            my $old = slurp($_->{filename});
-            chomp $old;
-            $new = show_thing(ref $_->{var} eq 'SCALAR' ? ${$_->{var}} : $_->{var});
-            $generate = 0 if $new eq $old;
-        }
-        if ($generate) {
-            status "⚒ $_->{filename}";
-            if (defined ($_->{routine})) {
-                $_->{routine}();
+    eval {
+        for (@{$project{configs}}) {
+            chdir $_->{base};
+            my ($old, $new);
+            my $generate = 1;
+            if (-e $_->{filename}) {
+                my $old = slurp($_->{filename});
+                chomp $old;
                 $new = show_thing(ref $_->{var} eq 'SCALAR' ? ${$_->{var}} : $_->{var});
+                $generate = 0 if $new eq $old;
             }
-            splat($_->{filename}, "$new\n");
+            if ($generate) {
+                status "⚒ $_->{filename}";
+                if (defined ($_->{routine})) {
+                    $_->{routine}();
+                    $new = show_thing(ref $_->{var} eq 'SCALAR' ? ${$_->{var}} : $_->{var});
+                }
+                splat($_->{filename}, "$new\n");
+            }
         }
+    };
+    if ($@) {
+        warn $@ unless "$@" eq "\n";
+        say "\e[31m✗\e[0m Nothing was done due to error.";
+        exit 1;
     }
 }
 
