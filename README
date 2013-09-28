@@ -24,7 +24,7 @@ Quick Reference:
           or a subroutine which returns filenames.
        - The compile routine (the last argument) is given two array refs as
           arguments containing the targets and the dependencies.
-  phony <targets>, <dependencies>, <routine>;
+  phony <targets>, <dependencies>?, <routine>?;
     - like rule, but the target(s) do not correspond to actual files
   subdep <targets>, <dependencies>;
     - Establishes that anything that depends on the target(s) also depends
@@ -49,12 +49,17 @@ Quick Reference:
        description will be printed in the "--help" message.  The description
        should start with "--<name>".
   chdir <directory>;
-    - Reexport of Cwd::chdir.
+    - Please use this instead of CORE::chdir or Cwd::chdir.
   targetmatch <regex>;
     - Returns all defined targets whose absolute filenames match the regex.
   run <command>;
     - Like the builtin system(), but aborts the build process if the command
        gives a non-zero exit status.
+  slurp <filename> <length>?
+    - Just returns the contents of the file as a string.  If <length> is given,
+       it only reads the first <length> bytes.
+  splat <filename> <string>
+    - Writes the string to the filename, clobbering any previous contents.
 
 Working Directories:
   MakePl tries to make working directories a lexical concept, so that things

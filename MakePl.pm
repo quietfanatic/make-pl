@@ -1,10 +1,14 @@
 #!/usr/bin/perl
-
- # MakePl - Portable drop-in build system
- # https://github.com/quietfanatic/make-pl
- # (Just copy this into your project directory somewhere)
-
 =cut
+
+MakePl - Portable drop-in build system
+https://github.com/quietfanatic/make-pl
+2013-09-27
+
+USAGE: See the README in the above repo.
+
+=====LICENSE=====
+
 The MIT License (MIT)
 
 Copyright (c) 2013 Lewis Wall
@@ -26,6 +30,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+=================
+
 =cut
 
 package MakePl;
@@ -42,7 +49,7 @@ use subs qw(cwd chdir);
 use File::Spec::Functions qw(:ALL);
 
 our @ISA = 'Exporter';
-our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targetmatch run);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targetmatch run slurp splat);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
 
@@ -524,15 +531,22 @@ sub target_is_default ($) {
 }
 
 sub slurp {
-    open my $F, '<', $_[0];
-    local $/;
-    my $r = <$F>;
+    my ($file, $bytes) = @_;
+    open my $F, '<', $file;
+    my $r;
+    if (defined $bytes) {
+        read $F, $r, $bytes;
+    }
+    else {
+        local $/; $r = <$F>;
+    }
     close $F;
     return $r;
 }
 sub splat {
-    open my $F, '>', $_[0];
-    print $F $_[1];
+    my ($file, $string) = @_;
+    open my $F, '>', $file;
+    print $F $string;
     close $F;
 }
 
