@@ -52,25 +52,26 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
 our %EXPORT_TAGS = ('all' => \@EXPORT);
 
 ##### GLOBALS
- # Caches the current working directory
-our $cwd = Cwd::cwd();
- # This variable is initialized on import.
-our %project;
- # This is set to 0 when recursing.
-our $this_is_root = 1;
- # Set once only.
-our $original_base = cwd;
+our $this_is_root = 1;  # This is set to 0 when recursing.
+our $current_file;  # Which make.pl we're processing
+my $cwd = Cwd::cwd();  # Caches the current working directory
+my $original_base = cwd;  # Set once only.
+my $made_was_called = 0;
+
+my @rules;  # All registered rules
+my %targets;  # List rules to build each target
+my %subdeps;  # Registered subdeps by file
+my @auto_subdeps;  # Functions that generate subdeps
+my %autoed_subdeps;  # Minimize calls to the above
+my %phonies;  # Targets that aren't really files
+my $defaults;  # undef or array ref
+my %configs;  # Set of registered config names, for cosmetic purposes only
+my %builtin_options;  # Defined later
+my %custom_options;  # Kept only for the help message
+my %options;  # Cache of command-line options
  # Prevent double-inclusion; can't use %INC because it does relative paths.
-our %included = (realpath($0) => 1);
- # A cache of file modification times.  It's probably safe to keep until exit.
-my %modtimes;
- # Just keep track.
-my %configs;
- # Defined later
-my %builtin_options;
-my %custom_options;
- # Taken as needed from the command line.
-our %options;
+my %included = (realpath($0) => 1);
+my %modtimes;  # Cache of file modification times
  # Flags set from options
 my $force = 0;
 my $verbose = 0;
@@ -80,24 +81,10 @@ my $simulate = 0;
 
 sub import {
     my ($package, $file, $line) = caller;
-    unless (%project) {
-        %project = (
-            current_file => $file,
-            rules => [],
-            targets => {},
-            subdeps => {},
-            auto_subdeps => [],
-            autoed_subdeps => {},
-            phonies => {},
-            defaults => undef,
-            made => 0,
-        );
-    }
-     # Get directory of the calling file, which may not be cwd
-    my @vdf = splitpath(rel2abs($file));
-    my $base = catpath($vdf[0], $vdf[1], '');
-    chdir $base;
+    $current_file = $file;
     MakePl->export_to_level(1, @_);
+     # Change to directory of the calling file
+    chdir catpath((splitpath rel2abs $file)[0,1], '');
      # Also import strict and warnings.
     strict->import();
     warnings->import();
@@ -105,8 +92,8 @@ sub import {
 
  # Fuss if make wasn't called
 END {
-    if ($? == 0 and !$project{made}) {
-        warn "\e[31m✗\e[0m $project{current_file} did not end with 'make;'\n";
+    if ($? == 0 and !$made_was_called) {
+        warn "\e[31m✗\e[0m $current_file did not end with 'make;'\n";
     }
 }
 
@@ -128,28 +115,25 @@ sub rule_with_caller {
         config => 0,
         planned => 0,  # Intrusive state for the planning phase
     };
-    push @{$project{rules}}, $rule;
+    push @rules, $rule;
     for (@{$rule->{to}}) {
-        push @{$project{targets}{realpath($_)}}, $rule;
+        push @{$targets{realpath($_)}}, $rule;
     }
 }
 sub rule ($$$) {
-    %project or croak "rule was called before importing MakePl";
     rule_with_caller(@_, caller);
 }
 sub phony ($;$$) {
-    %project or croak "phony was called before importing MakePl";
     @_ == 2 and croak "phony was given 2 arguments, but it must have either 1 or 3";
     for (arrayify($_[0])) {
-        $project{phonies}{realpath($_)} = 1;
+        $phonies{realpath($_)} = 1;
     }
     rule_with_caller(@_, caller) if @_ > 1;
 }
 sub subdep ($;$) {
-    %project or croak "subdep was called before importing MakePl";
     my ($to, $from) = @_;
     if (ref $to eq 'CODE') {
-        push @{$project{auto_subdeps}}, {
+        push @auto_subdeps, {
             base => cwd,
             code => $to
         };
@@ -161,7 +145,7 @@ sub subdep ($;$) {
             from => lazify($from),
         };
         for (@{$subdep->{to}}) {
-            push @{$project{subdeps}{realpath($_)}}, $subdep;
+            push @{$subdeps{realpath($_)}}, $subdep;
         }
     }
     else {
@@ -186,7 +170,7 @@ sub delazify {
 ##### OTHER DECLARATIONS
 
 sub defaults {
-    push @{$project{defaults}}, map realpath($_), @_;
+    push @$defaults, map realpath($_), @_;
 }
 sub include {
     for (@_) {
@@ -203,9 +187,8 @@ sub include {
         next if $included{$real};
         $included{real} = 1;
          # Make new project.
-        my $this_project = \%project;
         local $this_is_root = 0;
-        local $project{current_file} = abs2rel($real, $original_base);
+        local $current_file;
         do {
             package main;
             my $old_cwd = MakePl::cwd;
@@ -213,11 +196,11 @@ sub include {
             MakePl::chdir $old_cwd;
             $@ and die_status $@;
         };
-        if (!$project{made}) {
-            die "\e[31m✗\e[0m $project{current_file} did not end with 'make;'\n";
+        if (!$made_was_called) {
+            die "\e[31m✗\e[0m $current_file did not end with 'make;'\n";
         }
-        $project{made} = 0;
-        $project{defaults} = undef;
+        $made_was_called = 0;
+        $defaults = undef;
     }
 }
 
@@ -304,7 +287,6 @@ sub show_thing {
 }
 
 sub config {
-    %project or croak "config was called before importing MakePl";
     my ($filename, $var, $routine) = @_;
     grep ref $var eq $_, qw(SCALAR ARRAY HASH)
         or croak "config's second argument is not a SCALAR, ARRAY, or HASH ref (It's a " . ref($var) . " ref)";
@@ -324,8 +306,8 @@ sub config {
         planned => 0,
         stale => 0,
     };
-    push @{$project{rules}}, $rule;
-    push @{$project{targets}{realpath($filename)}}, $rule;
+    push @rules, $rule;
+    push @{$targets{realpath($filename)}}, $rule;
     $configs{realpath($filename)} = 1;
      # Read into $var immediately
     if (-e $filename) {
@@ -379,7 +361,7 @@ sub gen_config ($$$) {
                 }
             }
             say "Final targets:";
-            for (sort grep target_is_final($_), keys %{$project{targets}}) {
+            for (sort grep target_is_final($_), keys %targets) {
                 say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
             }
             exit 1;
@@ -390,7 +372,7 @@ sub gen_config ($$$) {
     'list-targets' => {
         ref => sub {
             say "\e[31m✗\e[0m All targets:";
-            for (sort keys %{$project{targets}}) {
+            for (sort keys %targets) {
                 say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
             }
             exit 1;
@@ -416,7 +398,6 @@ sub gen_config ($$$) {
 );
 
 sub option ($$;$) {
-    %project or croak "option was called before importing MakePl";
     my ($name, $ref, $desc) = @_;
     if (ref $name eq 'ARRAY') {
         &option($_, $ref, $desc) for @$name;
@@ -470,7 +451,7 @@ sub chdir ($) {
 
 sub targetmatch {
     my ($rx) = @_;
-    return grep $_ =~ $rx, map abs2rel($_), keys %{$project{targets}};
+    return grep $_ =~ $rx, map abs2rel($_), keys %targets;
 }
 
 sub show_command (@) {
@@ -518,7 +499,7 @@ sub realpaths (@) {
 
 sub target_is_final ($) {
     my $old_cwd = cwd;
-    for (@{$project{rules}}) {
+    for (@rules) {
         chdir $_->{base};
         delazify($_);
         for (@{$_->{from}}) {
@@ -533,12 +514,12 @@ sub target_is_final ($) {
 }
 
 sub target_is_default ($) {
-    if (defined $project{defaults}) {
-        my $is = grep $_ eq $_[0], @{$project{defaults}};
+    if (defined $defaults) {
+        my $is = grep $_ eq $_[0], @$defaults;
         return $is;
     }
     else {
-        my $rule = $project{rules}[0];
+        my $rule = $rules[0];
         defined $rule or return 0;
         my $old_cwd = cwd;
         chdir $rule->{base};
@@ -616,7 +597,7 @@ sub debug_rule ($) {
  # These work with absolute paths.
 
 sub fexists {
-    return 0 if $project{phonies}{$_[0]};
+    return 0 if $phonies{$_[0]};
     return -e $_[0];
 }
 sub modtime {
@@ -636,7 +617,7 @@ sub plan_target {
     my ($plan, $target) = @_;
      # Make sure the file exists or there's a rule for it
     my $rel = abs2rel($target, $original_base);
-    unless ($project{targets}{$target} or fexists($target)) {
+    unless ($targets{$target} or fexists($target)) {
         my $mess = "☢ Cannot find or make $rel" . (@{$plan->{stack}} ? ", required by\n" : "\n");
         for my $rule (reverse @{$plan->{stack}}) {
             $mess .= "\t" . debug_rule($rule) . "\n";
@@ -644,17 +625,17 @@ sub plan_target {
         die_status $mess;
     }
      # In general, there should be only rule per target, but there can be more.
-    return grep plan_rule($plan, $_), @{$project{targets}{$target}};
+    return grep plan_rule($plan, $_), @{$targets{$target}};
 }
 
 sub get_auto_subdeps {
     return map {
         my $target = $_;
-        @{$project{autoed_subdeps}{$target} //= [
+        @{$autoed_subdeps{$target} //= [
             map {
                 chdir $_->{base};
                 realpaths($_->{code}($target));
-            } @{$project{auto_subdeps}}
+            } @auto_subdeps
         ]}
     } @_;
 }
@@ -675,7 +656,7 @@ sub resolve_deps {
      # Using this style of loop because @deps will keep expanding.
     for (my $i = 0; $i < @deps; $i++) {
         push_new(\@deps, get_auto_subdeps($deps[$i]));
-        for my $subdep (@{$project{subdeps}{$deps[$i]}}) {
+        for my $subdep (@{$subdeps{$deps[$i]}}) {
             chdir $subdep->{base};
             delazify($subdep);
             push_new(\@deps, realpaths(@{$subdep->{from}}));
@@ -724,11 +705,11 @@ sub plan_rule {
 ##### RUNNING
 
 sub make () {
-    if ($project{made}) {
+    if ($made_was_called) {
         say "\e[31m✗\e[0m make was called twice in the same project.";
         exit 1;
     }
-    $project{made} = 1;
+    $made_was_called = 1;
     if ($this_is_root) {
         my @args = make_cmdline(@ARGV);
         my @program = make_plan(@args);
@@ -780,7 +761,6 @@ sub make_cmdline (@) {
     return @args;
 }
 
-
 sub make_plan (@) {
     my (@args) = @_;
     my $plan = init_plan();
@@ -788,11 +768,11 @@ sub make_plan (@) {
         if (@args) {
             grep plan_target($plan, realpath($_)), @args;
         }
-        elsif ($project{defaults}) {
-            grep plan_target($plan, $_), @{$project{defaults}};
+        elsif ($defaults) {
+            grep plan_target($plan, $_), @$defaults;
         }
         else {
-            plan_rule($plan, $project{rules}[0]);
+            plan_rule($plan, $rules[0]);
         }
     };
     if ($@) {
@@ -805,7 +785,7 @@ sub make_plan (@) {
 
 sub make_execute (@) {
     my @program = @_;
-    if (not @{$project{rules}}) {
+    if (not @rules) {
         say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
     }
     elsif (not @program) {
