@@ -40,7 +40,6 @@ package MakePl;
 use v5.10;
 use strict;
 use warnings; no warnings 'once';
-use autodie; no autodie 'chdir';
 use Carp 'croak';
 use Cwd 'realpath';
 use subs qw(cwd chdir);
@@ -444,7 +443,7 @@ sub cwd () {
     return $cwd;
 }
 sub chdir ($) {
-    $cwd eq $_[0] or Cwd::chdir($cwd = $_[0]);
+    $cwd eq $_[0] or Cwd::chdir($cwd = $_[0]) or die "Failed to chdir to $_[0]: $!\n";
 }
 
 ##### UTILITIES
@@ -536,22 +535,22 @@ sub target_is_default ($) {
 
 sub slurp {
     my ($file, $bytes) = @_;
-    open my $F, '<', $file;
+    open my $F, '<', $file or croak "Failed to open $file for reading: $! in call to slurp";
     my $r;
     if (defined $bytes) {
-        read $F, $r, $bytes;
+        read $F, $r, $bytes // (croak "Failed to read $file: $! in call to slurp");
     }
     else {
         local $/; $r = <$F>;
     }
-    close $F;
+    close $F or croak "Failed to close $file: $! in call to slurp";
     return $r;
 }
 sub splat {
     my ($file, $string) = @_;
-    open my $F, '>', $file;
-    print $F $string;
-    close $F;
+    open my $F, '>', $file or croak "Failed to open $file for writing: $! in call to splat";
+    print $F $string or croak "Failed to write to $file: $! in call to splat";
+    close $F or croak "Failed to close $file: $! in call to close";
 }
 
 ##### PRINTING ETC.
@@ -844,8 +843,8 @@ if ($^S == 0) {  # We've been called directly
     }
     my $path_to_pm = abs2rel(rel2abs(__FILE__), $dir);
     $path_to_pm =~ s/[\\']/\\$1/g;
-    open my $MAKEPL, '>', "$loc";
-    print $MAKEPL <<"END";
+    open my $MAKEPL, '>', $loc or die "Failed to open $loc for writing: $!\n";
+    print $MAKEPL <<"END" or die "Failed to write to $loc: $!\n";
 #!/usr/bin/perl
 use File::Spec::Functions ':ALL';
 use lib catpath((splitpath rel2abs __FILE__)[0,1], '$path_to_pm');
@@ -859,8 +858,8 @@ rule 'clean', [], sub { unlink \$program; };
 
 make;
 END
-    chmod 0755, $MAKEPL;
-    close $MAKEPL;
+    chmod 0755, $MAKEPL or warn "Failed to chmod $loc: $!\n";
+    close $MAKEPL or die "Failed to close $loc: $!\n";
     say "\e[32m✓\e[0m Generated $loc.";
 }
 
