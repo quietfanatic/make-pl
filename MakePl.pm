@@ -37,21 +37,19 @@ THE SOFTWARE.
 
 package MakePl;
 
+use v5.10;
 use strict;
 use warnings; no warnings 'once';
-use feature qw(switch say);
-use autodie;
-no autodie 'chdir';
-use Exporter;
-use Carp qw(croak);
-use Cwd qw(realpath);
+use autodie; no autodie 'chdir';
+use Carp 'croak';
+use Cwd 'realpath';
 use subs qw(cwd chdir);
-use File::Spec::Functions qw(:ALL);
+use File::Spec::Functions ':ALL';
 
+use Exporter;
 our @ISA = 'Exporter';
 our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targetmatch run slurp splat);
 our %EXPORT_TAGS = ('all' => \@EXPORT);
-
 
 ##### GLOBALS
  # Caches the current working directory
@@ -73,6 +71,7 @@ my %builtin_options;
 my %custom_options;
  # Taken as needed from the command line.
 our %options;
+ # Flags set from options
 my $force = 0;
 my $verbose = 0;
 my $simulate = 0;
@@ -80,12 +79,10 @@ my $simulate = 0;
 ##### STARTING
 
 sub import {
+    my ($package, $file, $line) = caller;
     unless (%project) {
-        my ($package, $file, $line) = caller;
         %project = (
-            caller_package => $package,
-            caller_file => $file,
-            caller_line => $line,
+            current_file => $file,
             rules => [],
             targets => {},
             subdeps => {},
@@ -95,22 +92,21 @@ sub import {
             defaults => undef,
             made => 0,
         );
-         # Get directory of the calling file, which may not be cwd
-        my @vdf = splitpath(rel2abs($file));
-        my $base = catpath($vdf[0], $vdf[1], '');
-        my $old_cwd = cwd;
-        chdir $base;
     }
+     # Get directory of the calling file, which may not be cwd
+    my @vdf = splitpath(rel2abs($file));
+    my $base = catpath($vdf[0], $vdf[1], '');
+    chdir $base;
     MakePl->export_to_level(1, @_);
      # Also import strict and warnings.
     strict->import();
     warnings->import();
 }
 
-
+ # Fuss if make wasn't called
 END {
     if ($? == 0 and !$project{made}) {
-        warn "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
+        warn "\e[31m✗\e[0m $project{current_file} did not end with 'make;'\n";
     }
 }
 
@@ -209,7 +205,7 @@ sub include {
          # Make new project.
         my $this_project = \%project;
         local $this_is_root = 0;
-        local %project;
+        local $project{current_file} = abs2rel($real, $original_base);
         do {
             package main;
             my $old_cwd = MakePl::cwd;
@@ -218,19 +214,10 @@ sub include {
             $@ and die_status $@;
         };
         if (!$project{made}) {
-            die "\e[31m✗\e[0m $project{caller_file} did not end with 'make;'\n";
+            die "\e[31m✗\e[0m $project{current_file} did not end with 'make;'\n";
         }
-        %project or return;  # Oops, it wasn't a make.pl, but we did it anyway
-         # merge projects
-        push @{$this_project->{rules}}, @{$project{rules}};
-        for (keys %{$project{targets}}) {
-            push @{$this_project->{targets}{$_}}, @{$project{targets}{$_}};
-        }
-        $this_project->{phonies} = {%{$this_project->{phonies}}, %{$project{phonies}}};
-        for (keys %{$project{subdeps}}) {
-            push @{$this_project->{subdeps}{$_}}, @{$project{subdeps}{$_}};
-        }
-        push @{$this_project->{auto_subdeps}}, @{$project{auto_subdeps}};
+        $project{made} = 0;
+        $project{defaults} = undef;
     }
 }
 
