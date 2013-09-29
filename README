@@ -37,10 +37,18 @@ Quick Reference:
   defaults <targets...>;
     - With no arguments, make.pl will build these targets.  The default
        default is to run the first rule given in the workflow.
+  targets;
+    - Returns all files or phonies that are the target of any rule.
   include <filenames...>;
     - Include the targets and rules in another make.pl.  Relative filenames,
        working directories, etc. all do The Right Thing.  Cyclical includes
        are fine.
+  config <filename>, <var>, <routine?>;
+    - Associate a config file with a data structure.  The file will immediately
+       be read into the reference, and a rule will be established for later to
+       write to the config file if the data has changed.  The optional routine
+       will be called before the file is written if it is determined to need
+       writing.
   option <name>, <routine>, <description?>;
     - Allows an option to be specified on the command line, like "--<name>" or
        "--<name>=<value>".  <routine> can be a code ref, which will be called
@@ -50,16 +58,15 @@ Quick Reference:
        should start with "--<name>".
   chdir <directory>;
     - Please use this instead of CORE::chdir or Cwd::chdir.
-  targets;
-    - Returns all files or phonies that are the target of any rule.
   run <command>;
     - Like the builtin system(), but aborts the build process if the command
        gives a non-zero exit status.
   slurp <filename> <length>?
     - Just returns the contents of the file as a string.  If <length> is given,
-       it only reads the first <length> bytes.
+       it only reads the first <length> bytes.  Dies on failure.
   splat <filename> <string>
     - Writes the string to the filename, clobbering any previous contents.
+       Dies on failure.
 
 Working Directories:
   MakePl tries to make working directories a lexical concept, so that things
