@@ -38,22 +38,19 @@ THE SOFTWARE.
 package MakePl;
 
 use v5.10;
-use strict;
+use strict qw(subs vars);
 use warnings; no warnings 'once';
 use Carp 'croak';
 use Cwd 'realpath';
 use subs qw(cwd chdir);
-use File::Spec::Functions ':ALL';
+use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
 
-use Exporter;
-our @ISA = 'Exporter';
-our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targetmatch run slurp splat);
-our %EXPORT_TAGS = ('all' => \@EXPORT);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets run slurp splat);
 
 ##### GLOBALS
 our $this_is_root = 1;  # This is set to 0 when recursing.
 our $current_file;  # Which make.pl we're processing
-my $cwd = Cwd::cwd();  # Caches the current working directory
+my $cwd = defined $ENV{PWD} ? realpath($ENV{PWD}) : Cwd::cwd();
 my $original_base = cwd;  # Set once only.
 my $made_was_called = 0;
 
@@ -79,11 +76,19 @@ my $simulate = 0;
 ##### STARTING
 
 sub import {
+    my $self = shift;
     my ($package, $file, $line) = caller;
     $current_file = $file;
-    MakePl->export_to_level(1, @_);
+     # Export symbols
+    my @args = (@_ == 0 or grep $_ =! /:all/i, @_)
+        ? @EXPORT
+        : @_;
+    for my $f (@args) {
+        grep $_ eq $f, @EXPORT or croak "No export '$f' in MakePl.";
+        *{$package.'::'.$f} = \&{$f};
+    }
      # Change to directory of the calling file
-    chdir catpath((splitpath rel2abs $file)[0,1], '');
+    chdir catpath((splitpath realpath $file)[0,1], '');
      # Also import strict and warnings.
     strict->import();
     warnings->import();
@@ -443,14 +448,26 @@ sub cwd () {
     return $cwd;
 }
 sub chdir ($) {
-    $cwd eq $_[0] or Cwd::chdir($cwd = $_[0]) or die "Failed to chdir to $_[0]: $!\n";
+    my $new = realpath($_[0]);
+    $cwd eq $new or Cwd::chdir($cwd = $new) or die "Failed to chdir to $new: $!\n";
+}
+sub rel2abs ($;$) {
+    if (defined $_[1]) {
+        my $old_cwd = cwd;
+        chdir $_[1];
+        my $r = realpath($_[0]);
+        chdir $old_cwd;
+        return $r;
+    }
+    else {
+        return realpath($_[0]);
+    }
 }
 
 ##### UTILITIES
 
-sub targetmatch {
-    my ($rx) = @_;
-    return grep $_ =~ $rx, map abs2rel($_), keys %targets;
+sub targets {
+    return keys %targets;
 }
 
 sub show_command (@) {
@@ -505,6 +522,9 @@ sub target_is_final ($) {
             if (realpath($_) eq $_[0]) {
                 chdir $old_cwd;
                 return 0;
+            }
+            elsif ($_[0] =~ /clean/ and $_ !~ /src|tmp|inc|build-config/) {
+                say "'$_[0]' ne '".realpath($_)."'";
             }
         }
     }
@@ -615,8 +635,8 @@ sub init_plan {
 sub plan_target {
     my ($plan, $target) = @_;
      # Make sure the file exists or there's a rule for it
-    my $rel = abs2rel($target, $original_base);
     unless ($targets{$target} or fexists($target)) {
+        my $rel = abs2rel($target, $original_base);
         my $mess = "☢ Cannot find or make $rel" . (@{$plan->{stack}} ? ", required by\n" : "\n");
         for my $rule (reverse @{$plan->{stack}}) {
             $mess .= "\t" . debug_rule($rule) . "\n";
@@ -690,7 +710,7 @@ sub plan_rule {
     $stale ||= $force;
     $stale ||= $rule->{check_stale}() if defined $rule->{check_stale};
     $stale ||= grep {
-        my $abs = realpath(rel2abs($_, $rule->{base}));
+        my $abs = realpath($_);
         !fexists($abs) or grep modtime($abs) < modtime($_), @{$rule->{deps}};
     } @{$rule->{to}};
     push @{$plan->{program}}, $rule if $stale;
@@ -793,7 +813,7 @@ sub make_execute (@) {
     else {
         my $old_cwd = cwd;
         for my $rule (@program) {
-            chdir rel2abs($rule->{base});
+            chdir $rule->{base};
             status $rule->{config} ? "⚒ " : "⚙ ", show_rule($rule);
             delazify($rule);
             unless ($simulate) {
@@ -841,13 +861,16 @@ if ($^S == 0) {  # We've been called directly
     else {
         $dir = cwd;
     }
-    my $path_to_pm = abs2rel(rel2abs(__FILE__), $dir);
-    $path_to_pm =~ s/[\\']/\\$1/g;
+    my $path_to_pm = abs2rel(realpath(__FILE__), $dir);
+    $path_to_pm =~ s/'/\\'/g;
+    my $libpath = $path_to_pm eq '.'
+        ? '$base'
+        : '$base.\'/$path_to_pm';
     open my $MAKEPL, '>', $loc or die "Failed to open $loc for writing: $!\n";
     print $MAKEPL <<"END" or die "Failed to write to $loc: $!\n";
 #!/usr/bin/perl
-use File::Spec::Functions ':ALL';
-use lib catpath((splitpath rel2abs __FILE__)[0,1], '$path_to_pm');
+use Cwd 'realpath';
+use lib {(my \$base = realpath __FILE__) =~ s/[^\\\\\\/]*\$//; $libpath}
 use MakePl;
 
  # Sample rules

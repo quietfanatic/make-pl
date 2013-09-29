@@ -50,8 +50,8 @@ Quick Reference:
        should start with "--<name>".
   chdir <directory>;
     - Please use this instead of CORE::chdir or Cwd::chdir.
-  targetmatch <regex>;
-    - Returns all defined targets whose absolute filenames match the regex.
+  targets;
+    - Returns all files or phonies that are the target of any rule.
   run <command>;
     - Like the builtin system(), but aborts the build process if the command
        gives a non-zero exit status.
