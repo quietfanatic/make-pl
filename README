@@ -67,6 +67,10 @@ Quick Reference:
   splat <filename> <string>
     - Writes the string to the filename, clobbering any previous contents.
        Dies on failure.
+  which <command>;
+    - Like 'which' on UNIX and 'where' on Windows.  Searches the PATH for the
+       executable file providing the given command and returns it, or undef if
+       it wasn't found.
 
 Working Directories:
   MakePl tries to make working directories a lexical concept, so that things

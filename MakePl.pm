@@ -45,7 +45,7 @@ use Cwd 'realpath';
 use subs qw(cwd chdir);
 use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
 
-our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets run slurp splat);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets run slurp splat which);
 
 # GLOBALS
     our $this_is_root = 1;  # This is set to 0 when recursing.
@@ -741,6 +741,21 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         open my $F, '>', $file or croak "Failed to open $file for writing: $! in call to splat";
         print $F $string or croak "Failed to write to $file: $! in call to splat";
         close $F or croak "Failed to close $file: $! in call to close";
+    }
+
+    sub which {
+        my ($cmd) = @_;
+        for (split /[:;]/, $ENV{PATH}) {
+            my $f = "$_/$cmd";
+            return $f if -x $f;
+            if (exists $ENV{PATHEXT}) {
+                for my $ext (split /;/, $ENV{PATHEXT}) {
+                    my $f = "$_/$cmd$ext";
+                    return $f if -x $f;
+                }
+            }
+        }
+        return undef;
     }
 
 # PLANNING
