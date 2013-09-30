@@ -807,6 +807,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
 
  # Generate a make.pl scaffold.
 if ($^S == 0) {  # We've been called directly
+    $make_was_called = 1;  # Not really but supresses warning
     if (@ARGV != 1 or $ARGV[0] eq '--help') {
         say "\e[31m✗\e[0m Usage: perl $0 <directory (default: .)>";
         exit 1;
@@ -829,15 +830,26 @@ if ($^S == 0) {  # We've been called directly
         $dir = cwd;
     }
     my $path_to_pm = abs2rel(realpath(__FILE__), $dir);
+    $path_to_pm =~ s/\/MakePl\.pm$//;
     $path_to_pm =~ s/'/\\'/g;
-    my $libpath = $path_to_pm eq '.'
-        ? '$base'
-        : '$base.\'/$path_to_pm';
+    my $pathext = $path_to_pm eq '.'
+        ? ''
+        : ".'/$path_to_pm'";
+    local $/;
+    my $out = <DATA>;
+    $out =~ s/◀PATHEXT▶/$pathext/;
     open my $MAKEPL, '>', $loc or die "Failed to open $loc for writing: $!\n";
-    print $MAKEPL <<"END" or die "Failed to write to $loc: $!\n";
+    print $MAKEPL $out or die "Failed to write to $loc: $!\n";
+    chmod 0755, $MAKEPL or warn "Failed to chmod $loc: $!\n";
+    close $MAKEPL or die "Failed to close $loc: $!\n";
+    say "\e[32m✓\e[0m Generated $loc.";
+}
+
+1;
+
+__DATA__
 #!/usr/bin/perl
-use Cwd 'realpath';
-use lib {(my \$base = realpath __FILE__) =~ s/[^\\\\\\/]*\$//; $libpath}
+use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')◀PATHEXT▶};
 use MakePl;
 
  # Sample rules
@@ -847,10 +859,3 @@ rule \$program, \$main, sub {
 rule 'clean', [], sub { unlink \$program; };
 
 make;
-END
-    chmod 0755, $MAKEPL or warn "Failed to chmod $loc: $!\n";
-    close $MAKEPL or die "Failed to close $loc: $!\n";
-    say "\e[32m✓\e[0m Generated $loc.";
-}
-
-1;
