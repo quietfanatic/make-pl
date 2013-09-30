@@ -59,7 +59,6 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     my @auto_subdeps;  # Functions that generate subdeps
     my %autoed_subdeps;  # Minimize calls to the above
     my $defaults;  # undef or array ref
-    my %nonfinal_targets;  # For --help message
 # SYSTEM INTERACTION
     my $cwd = defined $ENV{PWD} ? realpath($ENV{PWD}) : Cwd::cwd();
     my $original_base = cwd;  # Set once only.
@@ -376,7 +375,6 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         }
         chdir $rule->{base};
         $rule->{deps} = [@deps];
-        $nonfinal_targets{$_} = 1 for @deps;
     }
 
     sub show_rule ($) {
@@ -599,7 +597,11 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     %builtin_options = (
         help => {
             ref => sub {
-                resolve_deps($_) for @rules;
+                my %nonfinal_targets;
+                for (@rules) {
+                    resolve_deps($_);
+                    $nonfinal_targets{$_} = 1 for @{$_->{deps}};
+                }
                 say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
                 if (%custom_options) {
                     say "Custom options:";
