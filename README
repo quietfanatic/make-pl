@@ -42,7 +42,7 @@ Quick Reference:
   include <filenames...>;
     - Include the targets and rules in another make.pl.  Relative filenames,
        working directories, etc. all do The Right Thing.  Cyclical includes
-       are fine.
+       are fine and even encouraged.
   config <filename>, <var>, <routine?>;
     - Associate a config file with a data structure.  The file will immediately
        be read into the reference, and a rule will be established for later to
@@ -88,7 +88,7 @@ Working Directories:
        other chdir will desync the working directory.
 
 Recommendations:
-  - It's best to die if something fails.  The autodie pragma is recommended.
+  - It's best to die if something fails.  The autodie pragma is useful.
   - A basic knowledge of Perl is recommended.  Knowledge of make and Makefiles
      is not required, but knowledge of why people use them is.
   - If your program is large and has good modularity, do take advantage of the
