@@ -59,6 +59,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     my @auto_subdeps;  # Functions that generate subdeps
     my %autoed_subdeps;  # Minimize calls to the above
     my $defaults;  # undef or array ref
+    my %nonfinal_targets;  # For --help message
 # SYSTEM INTERACTION
     my $cwd = defined $ENV{PWD} ? realpath($ENV{PWD}) : Cwd::cwd();
     my $original_base = cwd;  # Set once only.
@@ -359,6 +360,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
     sub resolve_deps {
         my ($rule) = @_;
+        return if defined $rule->{deps};
          # Get the realpaths of all dependencies and their subdeps
         chdir $rule->{base};
         delazify($rule);
@@ -374,6 +376,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         }
         chdir $rule->{base};
         $rule->{deps} = [@deps];
+        $nonfinal_targets{$_} = 1 for @deps;
     }
 
     sub show_rule ($) {
@@ -389,22 +392,6 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
     sub debug_rule ($) {
         return "$_[0]{caller_file}:$_[0]{caller_line}: " . directory_prefix($_[0]{base}) . show_rule($_[0]);
-    }
-
-    sub target_is_final ($) {
-        my $old_cwd = cwd;
-        for (@rules) {
-            chdir $_->{base};
-            delazify($_);
-            for (@{$_->{from}}) {
-                if (realpath($_) eq $_[0]) {
-                    chdir $old_cwd;
-                    return 0;
-                }
-            }
-        }
-        chdir $old_cwd;
-        return 1;
     }
 
     sub target_is_default ($) {
@@ -612,6 +599,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     %builtin_options = (
         help => {
             ref => sub {
+                resolve_deps($_) for @rules;
                 say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
                 if (%custom_options) {
                     say "Custom options:";
@@ -626,7 +614,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
                     }
                 }
                 say "Final targets:";
-                for (sort grep target_is_final($_), keys %targets) {
+                for (sort grep !$nonfinal_targets{$_}, keys %targets) {
                     say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
                 }
                 exit 1;
