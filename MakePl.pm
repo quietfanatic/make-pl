@@ -45,7 +45,7 @@ use Cwd 'realpath';
 use subs qw(cwd chdir);
 use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
 
-our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets run slurp splat which);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets exists_or_target run slurp splat which);
 
 # GLOBALS
     our $this_is_root = 1;  # This is set to 0 when recursing.
@@ -317,6 +317,10 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
 
     sub targets {
         return keys %targets;
+    }
+
+    sub exists_or_target {
+        return -e $_[0] or exists $targets{realpath($_[0])};
     }
 
     sub arrayify {

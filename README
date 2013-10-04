@@ -39,6 +39,8 @@ Quick Reference:
        default is to run the first rule given in the workflow.
   targets;
     - Returns all files or phonies that are the target of any rule.
+  exists_or_target <filename>;
+    - Checks if the file exists or there's a target for it.
   include <filenames...>;
     - Include the targets and rules in another make.pl.  Relative filenames,
        working directories, etc. all do The Right Thing.  Cyclical includes
