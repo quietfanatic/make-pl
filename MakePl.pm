@@ -823,7 +823,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
  # Generate a make.pl scaffold.
 if ($^S == 0) {  # We've been called directly
     $make_was_called = 1;  # Not really but supresses warning
-    if (@ARGV != 1 or $ARGV[0] eq '--help') {
+    if (@ARGV > 1 or (defined $ARGV[0] and $ARGV[0] eq '--help')) {
         say "\e[31m✗\e[0m Usage: perl $0 <directory (default: .)>";
         exit 1;
     }
@@ -834,7 +834,7 @@ if ($^S == 0) {  # We've been called directly
         $loc = "$loc/make.pl";
         $dir = $loc;
     }
-    elsif (-e $loc) {
+    if (-e $loc) {
         say "\e[31m✗\e[0m Did not generate $loc because it already exists.";
         exit 1;
     }
