@@ -366,6 +366,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         my @deps = (realpaths(@{$rule->{from}}), $rule->{caller_file}, $this_file);
          # Using this style of loop because @deps will keep expanding.
         for (my $i = 0; $i < @deps; $i++) {
+            defined $deps[$i] or die "Undef dependency given to rule at $rule->{caller_file} line $rule->{caller_line}\n";
             push_new(\@deps, get_auto_subdeps($deps[$i]));
             for my $subdep (@{$subdeps{$deps[$i]}}) {
                 chdir $subdep->{base};
