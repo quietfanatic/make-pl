@@ -3,7 +3,7 @@
 
 MakePl - Portable drop-in build system
 https://github.com/quietfanatic/make-pl
-2013-09-27
+2013-10-05
 
 USAGE: See the README in the above repo.
 
@@ -845,9 +845,9 @@ if ($^S == 0) {  # We've been called directly
         $dir = cwd;
     }
     my $path_to_pm = abs2rel(realpath(__FILE__), $dir);
-    $path_to_pm =~ s/\/MakePl\.pm$//;
+    $path_to_pm =~ s/\/?MakePl\.pm$//;
     $path_to_pm =~ s/'/\\'/g;
-    my $pathext = $path_to_pm eq '.'
+    my $pathext = $path_to_pm eq ''
         ? ''
         : ".'/$path_to_pm'";
     local $/;
