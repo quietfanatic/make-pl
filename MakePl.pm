@@ -259,7 +259,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         my ($to, $from, $recipe, $package, $file, $line) = @_;
         ref $recipe eq 'CODE' or !defined $recipe or croak "Non-code recipe given to rule";
         my $rule = {
-            caller_file => realpath($file),
+            caller_file => $current_file,
             caller_line => $line,
             base => cwd,
             to => [arrayify($to)],
@@ -510,7 +510,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
             deps => undef,
             check_stale => sub { stale_config($filename, $var); },
             recipe => sub { gen_config($filename, $var, $routine); },
-            caller_file => realpath($file),
+            caller_file => $current_file,
             caller_line => $line,
             config => 1,
             planned => 0,
