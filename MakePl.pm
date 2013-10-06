@@ -739,6 +739,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
     sub splat {
         my ($file, $string) = @_;
+        defined $string or croak "Cannot splat undef to $file";
         open my $F, '>', $file or croak "Failed to open $file for writing: $! in call to splat";
         print $F $string or croak "Failed to write to $file: $! in call to splat";
         close $F or croak "Failed to close $file: $! in call to close";
