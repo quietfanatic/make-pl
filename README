@@ -63,12 +63,15 @@ Quick Reference:
   run <command>;
     - Like the builtin system(), but aborts the build process if the command
        gives a non-zero exit status.
-  slurp <filename> <length>?
+  slurp <filename> <length?>
     - Just returns the contents of the file as a string.  If <length> is given,
        it only reads the first <length> bytes.  Dies on failure.
   splat <filename> <string>
     - Writes the string to the filename, clobbering any previous contents.
        Dies on failure.
+  slurp_utf8 <filename> <length?>
+  splat_utf8 <filename> <string>
+    - Like slurp and splat, but with UTF-8-encoded files.
   which <command>;
     - Like 'which' on UNIX and 'where' on Windows.  Searches the PATH for the
        executable file providing the given command and returns it, or undef if

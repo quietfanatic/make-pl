@@ -40,12 +40,14 @@ package MakePl;
 use v5.10;
 use strict qw(subs vars);
 use warnings; no warnings 'once';
+use utf8;
+binmode STDOUT, ':utf8';
 use Carp 'croak';
 use Cwd 'realpath';
 use subs qw(cwd chdir);
 use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
 
-our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets exists_or_target run slurp splat which);
+our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets exists_or_target run slurp splat slurp_utf8 splat_utf8 which);
 
 # GLOBALS
     our $this_is_root = 1;  # This is set to 0 when recursing.
@@ -521,7 +523,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         $configs{realpath($filename)} = 1;
          # Read into $var immediately
         if (-e $filename) {
-            my $str = slurp($filename);
+            my $str = slurp_utf8($filename);
             chomp $str;
             my $val = read_config($filename, $str);
             if (ref $var eq 'SCALAR') {
@@ -541,7 +543,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     sub stale_config ($$) {
         my ($filename, $var) = @_;
         return 1 unless -e $filename;
-        my $old = slurp($filename);
+        my $old = slurp_utf8($filename);
         chomp $old;
         my $new = show_thing(ref $var eq 'SCALAR' ? $$var : $var);
         return $new ne $old;
@@ -551,7 +553,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         my ($filename, $var, $routine) = @_;
         $routine->() if defined $routine;
         my $new = show_thing(ref $var eq 'SCALAR' ? $$var : $var);
-        splat($filename, "$new\n");
+        splat_utf8($filename, "$new\n");
     }
 
     sub option ($$;$) {
@@ -744,6 +746,14 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         print $F $string or croak "Failed to write to $file: $! in call to splat";
         close $F or croak "Failed to close $file: $! in call to close";
     }
+    sub slurp_utf8 {
+        require Encode;
+        return Encode::decode_utf8(slurp(@_));
+    }
+    sub splat_utf8 {
+        require Encode;
+        splat($_[0], Encode::encode_utf8($_[1]));
+    }
 
     sub which {
         my ($cmd) = @_;
@@ -855,7 +865,7 @@ if ($^S == 0) {  # We've been called directly
     local $/;
     my $out = <DATA>;
     $out =~ s/◀PATHEXT▶/$pathext/;
-    open my $MAKEPL, '>', $loc or die "Failed to open $loc for writing: $!\n";
+    open my $MAKEPL, '>:utf8', $loc or die "Failed to open $loc for writing: $!\n";
     print $MAKEPL $out or die "Failed to write to $loc: $!\n";
     chmod 0755, $MAKEPL or warn "Failed to chmod $loc: $!\n";
     close $MAKEPL or die "Failed to close $loc: $!\n";
