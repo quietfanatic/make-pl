@@ -38,7 +38,8 @@ Quick Reference:
     - With no arguments, make.pl will build these targets.  The default
        default is to run the first rule given in the workflow.
   targets;
-    - Returns all files or phonies that are the target of any rule.
+    - Returns all files or phonies that are the target of any rule that has
+       been declared so far.
   exists_or_target <filename>;
     - Checks if the file exists or there's a target for it.
   include <filenames...>;
