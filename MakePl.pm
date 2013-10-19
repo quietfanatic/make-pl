@@ -45,7 +45,7 @@ binmode STDOUT, ':utf8';
 use Carp 'croak';
 use Cwd 'realpath';
 use subs qw(cwd chdir);
-use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
+use File::Spec::Functions qw(catfile catpath splitpath abs2rel rel2abs);
 
 our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets exists_or_target run slurp splat slurp_utf8 splat_utf8 which);
 
@@ -90,7 +90,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
             *{$package.'::'.$f} = \&{$f};
         }
          # Change to directory of the calling file
-        chdir catpath((splitpath realpath $file)[0,1], '');
+        chdir catpath((splitpath $current_file)[0,1], '');
          # Also import strict and warnings.
         strict->import();
         warnings->import();
@@ -198,7 +198,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
             my $plan = init_plan();
             eval {
                 if (@args) {
-                    grep plan_target($plan, realpath($_)), @args;
+                    grep plan_target($plan, realpath($_) // rel2abs($_)), @args;
                 }
                 elsif ($defaults) {
                     grep plan_target($plan, $_), @$defaults;
@@ -274,7 +274,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         };
         push @rules, $rule;
         for (@{$rule->{to}}) {
-            push @{$targets{realpath($_)}}, $rule;
+            push @{$targets{realpath($_) // rel2abs($_)}}, $rule;
         }
     }
 
@@ -285,7 +285,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     sub phony ($;$$) {
         my ($to, $from, $recipe) = @_;
         for (arrayify($to)) {
-            $phonies{realpath($_)} = 1;
+            $phonies{realpath($_) // rel2abs($_)} = 1;
         }
         create_rule($to, $from, $recipe, caller) if defined $from;
     }
@@ -305,7 +305,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
                 from => lazify($from),
             };
             for (@{$subdep->{to}}) {
-                push @{$subdeps{realpath($_)}}, $subdep;
+                push @{$subdeps{realpath($_) // rel2abs($_)}}, $subdep;
             }
         }
         else {
@@ -314,7 +314,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
 
     sub defaults {
-        push @$defaults, map realpath($_), @_;
+        push @$defaults, map realpath($_) // rel2abs($_), @_;
     }
 
     sub targets {
@@ -322,7 +322,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
 
     sub exists_or_target {
-        return -e $_[0] or exists $targets{realpath($_[0])};
+        return -e $_[0] or exists $targets{realpath($_[0]) // rel2abs($_)};
     }
 
     sub arrayify {
@@ -661,18 +661,6 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     sub chdir ($) {
         my $new = realpath($_[0]);
         $cwd eq $new or Cwd::chdir($cwd = $new) or die "Failed to chdir to $new: $!\n";
-    }
-    sub rel2abs ($;$) {
-        if (defined $_[1]) {
-            my $old_cwd = cwd;
-            chdir $_[1];
-            my $r = realpath($_[0]);
-            chdir $old_cwd;
-            return $r;
-        }
-        else {
-            return realpath($_[0]);
-        }
     }
     sub fexists {
         defined $_[0] or Carp::confess "Undefined argument passed to fexists.";
