@@ -45,7 +45,7 @@ binmode STDOUT, ':utf8';
 use Carp 'croak';
 use Cwd 'realpath';
 use subs qw(cwd chdir);
-use File::Spec::Functions qw(catfile catpath splitpath abs2rel rel2abs);
+use File::Spec::Functions qw(catfile catpath splitpath abs2rel);
 
 our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir targets exists_or_target run slurp splat slurp_utf8 splat_utf8 which);
 
@@ -198,7 +198,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
             my $plan = init_plan();
             eval {
                 if (@args) {
-                    grep plan_target($plan, realpath($_) // rel2abs($_)), @args;
+                    grep plan_target($plan, rel2abs($_, $original_base)), @args;
                 }
                 elsif ($defaults) {
                     grep plan_target($plan, $_), @$defaults;
@@ -704,14 +704,20 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
 
     sub realpaths (@) {
-        return map {
-            my $r = realpath($_);
-            unless (defined $r) {
-                my $abs = File::Spec::Functions::rel2abs($_) // $_;
-                croak "\"$abs\" doesn't seem to be a real path";
-            }
-            $r;
-        } @_;
+        return map realpath($_) // rel2abs($_), @_;
+    }
+
+    sub rel2abs ($;$) {
+        if (defined $_[1]) {
+            my $old_cwd = cwd;
+            chdir $_[1];
+            my $r = realpath($_[0]) // File::Spec::Functions::rel2abs($_[0]);
+            chdir $old_cwd;
+            return $r;
+        }
+        else {
+            return realpath($_[0]) // File::Spec::Functions::rel2abs($_[0]);
+        }
     }
 
     sub slurp {
@@ -772,7 +778,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
          # Make sure the file exists or there's a rule for it
         unless ($targets{$target} or fexists($target)) {
             my $rel = abs2rel($target, $original_base);
-            my $mess = "☢ Cannot find or make $rel" . (@{$plan->{stack}} ? ", required by\n" : "\n");
+            my $mess = "☢ Cannot find or make $rel ($target)" . (@{$plan->{stack}} ? ", required by\n" : "\n");
             for my $rule (reverse @{$plan->{stack}}) {
                 $mess .= "\t" . debug_rule($rule) . "\n";
             }
@@ -807,7 +813,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         $stale ||= $force;
         $stale ||= $rule->{check_stale}() if defined $rule->{check_stale};
         $stale ||= grep {
-            my $abs = realpath($_);
+            my $abs = realpath($_) // rel2abs($_);
             !fexists($abs) or grep modtime($abs) < modtime($_), @{$rule->{deps}};
         } @{$rule->{to}};
         push @{$plan->{program}}, $rule if $stale;
