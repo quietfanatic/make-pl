@@ -230,7 +230,11 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
                             unless $simulate or not defined $rule->{recipe};
                     }
                 };
-                if ($@) {
+                if ("$@" eq "interrupted\n") {
+                    say "\e[31m✗\e[0m Interrupted.";
+                    exit 1;
+                }
+                elsif ($@) {
                     warn $@ unless "$@" eq "\n";
                     say "\e[31m✗\e[0m Did not finish due to error.";
                     exit 1;
@@ -691,6 +695,9 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
              # As per perldoc -f system
             if ($? == -1) {
                 status("☢ Couldn't start command: $!");
+            }
+            elsif (($? & 127) == 2) {
+                die "interrupted\n";
             }
             elsif ($? & 127) {
                 status(sprintf "☢ Command died with signal %d, %s coredump",
