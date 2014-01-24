@@ -117,12 +117,11 @@ Recommendations:
   - After the previous point it goes without saying, but you can invoke a
      make.pl from any directory, not just the one it's in, provided the make.pl
      is correctly formed.  To make sure your make.pl can be run anywhere, put
-     this at the top:
-       use FindBin;
-       use lib "$FindBin::Bin/<directory containing MakePl.pm>";
+       use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')◀path▶};
        use MakePl;
-     If you used 'perl MakePl.pm' to generate a make.pl, it'll have done this
-     for you.
+     where ◀path▶ is nothing if MakePl.pm is in the same directory, or
+     something like .'/tools' if MakePl.pm is in the directory 'tools'. If you
+     used 'perl MakePl.pm' to generate a make.pl, it'll have done this for you.
   - Because your build script is in a real programming language and not a DSL,
      you can actually do real abstraction.  Take a look at "sample_make.pl"
      to see how.
