@@ -17,14 +17,16 @@ Usage:
 Quick Reference:
   make;
     - Put this at the end of the script, whether standalone or included.
-  rule <targets>, <dependencies>, <routine>;
+  rule <targets>, <dependencies>, <routine>, <options>?;
     - Defines a compilation rule like in a Makefile.
        - <targets> can be a single filename or an array ref of filenames.
        - <dependencies> can be a single filename, an array ref of filenames,
           or a subroutine which returns filenames.
        - The compile routine (the last argument) is given two array refs as
           arguments containing the targets and the dependencies.
-  phony <targets>, <dependencies>?, <routine>?;
+       - The only supported option is fork => 1, which says that this rule
+          can be executed in parallel (in a forked child).
+  phony <targets>, <dependencies>?, <routine>?, <options>?;
     - like rule, but the target(s) do not correspond to actual files
   subdep <targets>, <dependencies>;
     - Establishes that anything that depends on the target(s) also depends
