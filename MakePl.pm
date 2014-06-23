@@ -830,16 +830,26 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
 
     sub slurp {
-        my ($file, $bytes) = @_;
-        open my $F, '<', $file or croak "Failed to open $file for reading: $! in call to slurp";
+        my ($file, $bytes, $fail) = @_;
+        $fail //= 1;
+        open my $F, '<', $file or
+            $fail ? (croak "Failed to open $file for reading: $! in call to slurp")
+                  : (return undef);
         my $r;
         if (defined $bytes) {
-            read $F, $r, $bytes // (croak "Failed to read $file: $! in call to slurp");
+            defined read($F, $r, $bytes) or
+                $fail ? (croak "Failed to read $file: $! in call to slurp")
+                      : (return undef);
         }
         else {
             local $/; $r = <$F>;
+            defined $r or
+                $fail ? (croak "Failed to read $file: $! in call to slurp")
+                      : (return undef);
         }
-        close $F or croak "Failed to close $file: $! in call to slurp";
+        close $F or
+            $fail ? (croak "Failed to close $file: $! in call to slurp")
+                  : (return undef);
         return $r;
     }
     sub splat {
@@ -855,7 +865,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
     }
     sub splat_utf8 {
         require Encode;
-        splat($_[0], Encode::encode_utf8($_[1]));
+        splat($_[0], Encode::encode_utf8($_[1]), $_[2]);
     }
 
     sub which {
