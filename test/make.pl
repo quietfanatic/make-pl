@@ -1,6 +1,5 @@
 #!/usr/bin/perl
-use FindBin;
-use lib "$FindBin::Bin/..";
+use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.').'/..'};
 use MakePl;
 use autodie;
 
@@ -23,5 +22,6 @@ phony 'clean', '', sub {
     no autodie;
     unlink 'to', 'build-config';
 };
+defaults 'to';
 
 make;
