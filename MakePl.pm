@@ -115,7 +115,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
             push @{$subdeps{$real}}, { base => MakePl::cwd, to => [$real], from => [$current_file] };
              # Skip already-included files
             next if $included{$real};
-            $included{real} = 1;
+            $included{$real} = 1;
              # Make new project.
             local $this_is_root = 0;
             local $current_file;
