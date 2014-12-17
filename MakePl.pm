@@ -84,7 +84,7 @@ our @EXPORT = qw(make rule phony subdep defaults include config option cwd chdir
         my ($package, $file, $line) = caller;
         $current_file = realpath($file);
          # Export symbols
-        my @args = (@_ == 0 or grep $_ =! /:all/i, @_)
+        my @args = (@_ == 0 or grep $_ eq ':all' || $_ eq ':ALL', @_)
             ? @EXPORT
             : @_;
         for my $f (@args) {
