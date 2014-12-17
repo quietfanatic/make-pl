@@ -2,11 +2,15 @@
 MakePl - Very portable build system in Perl
 https://github.com/quietfanatic/make-pl
 
+About:
+  Don't make your users type more than one command to build.
+  Don't make your users download and install some obscure build system.
+  Program your build system in a real programming language.
+  ./make.pl && run
+
 Installation:
   Just grab MakePl.pm and stuff it in your project directory.
   This has no dependencies besides Perl >= 5.10 and its core modules.
-  (I suppose if you want you can put this in some library directory with all
-  your other DarkPAN modules, but that will reduce your project's portability.)
 
 Usage:
   To run a make.pl:
@@ -22,7 +26,7 @@ Quick Reference:
        - <targets> can be a single filename or an array ref of filenames.
        - <dependencies> can be a single filename, an array ref of filenames,
           or a subroutine which returns filenames.
-       - The compile routine (the last argument) is given two array refs as
+       - The compile routine (AKA the recipe) is given two array refs as
           arguments containing the targets and the dependencies.
        - The only supported option is fork => 1, which says that this rule
           can be executed in parallel (in a forked child).
@@ -34,7 +38,7 @@ Quick Reference:
   subdep <routine>;
     - Provides a way to automatically deduce subdeps.  The routine will be
        called with a filename and is expected to return some more filenames.
-       See "sample_make.pl" in this repo for a function that'll to scan C/C++
+       See "sample_make.pl" in this repo for a function that'll scan C/C++
        files for #include statements.
   defaults <targets...>;
     - With no arguments, make.pl will build these targets.  The default
@@ -123,7 +127,7 @@ Recommendations:
        use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')◀path▶};
        use MakePl;
      where ◀path▶ is nothing if MakePl.pm is in the same directory, or
-     something like .'/tools' if MakePl.pm is in the directory 'tools'. If you
+     something like '/tools' if MakePl.pm is in the directory 'tools'. If you
      used 'perl MakePl.pm' to generate a make.pl, it'll have done this for you.
   - Because your build script is in a real programming language and not a DSL,
      you can actually do real abstraction.  Take a look at "sample_make.pl"
