@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')◀path▶};
+use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')};
 use MakePl;  # Automatically imports strict and warnings
 use Cwd 'realpath';
 
