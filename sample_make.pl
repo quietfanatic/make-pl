@@ -22,7 +22,7 @@ my @includes = (cwd);
  # Link all .o files into the final program
 rule $program, sub { grep /\.o$/, targets }, sub {
     run "$ld @{$_[1]} -o $_[0][0]";
-}
+};
 
  # Register a pair of .c and .o files
 sub module {
@@ -41,7 +41,7 @@ module($_) for glob '*.c *.cpp */*.c */*.cpp */*/*.c */*/*.cpp';
  # An finally a cleanup rule
 rule 'clean', [], sub {
     unlink $program, grep /\.o$/, targets;
-}
+};
 
  # Let's generate subdependencies from #include statements.
  # This only scans #includes with quotes (not angle brackets).
@@ -59,6 +59,6 @@ subdep sub {
         }
     }
     return @r;
-}
+};
 
 make;
