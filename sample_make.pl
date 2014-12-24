@@ -31,7 +31,7 @@ sub module {
     my $base = $1;
     my $compiler = $2 ? $cppc : $cc;
     rule "$base.o", $file, sub {
-        run "$compiler -c \Q$file\E -o \!$base.o";
+        run "$compiler -c \Q$file\E -o \Q$base.o\E";
     }
 }
 
