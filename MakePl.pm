@@ -797,7 +797,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         },
         force => {
             ref => \$force,
-            desc => '--force - Skip modification time checks',
+            desc => '--force - Skip modification time checks and always run the rules',
             custom => 0
         },
         verbose => {
