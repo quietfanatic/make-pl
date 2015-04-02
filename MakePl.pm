@@ -521,15 +521,11 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         else {
             my $rule = $rules[0];
             defined $rule or return 0;
-            my $old_cwd = cwd;
-            chdir $rule->{base};
             for (@{$rule->{to}}) {
-                if (rel2abs($_) eq $_[0]) {
-                    chdir $old_cwd;
+                if (rel2abs($_, $rule->{base}) eq $_[0]) {
                     return 1;
                 }
             }
-            chdir $old_cwd;
             return 0;
         }
     }
@@ -722,10 +718,49 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     %builtin_options = (
         help => {
             ref => sub {
-                my %nonfinal_targets;
-                for (@rules) {
-                    resolve_deps($_);
-                    $nonfinal_targets{$_} = 1 for @{$_->{deps}};
+                my (%nonfinal, %suggested, %nonsuggested, %default);
+                for my $rule (@rules) {
+                    resolve_deps($rule);
+                    $nonfinal{$_} = 1 for @{$rule->{deps}};
+                    if (defined $rule->{options}{suggested}) {
+                        for (@{$rule->{to}}) {
+                            if ($rule->{options}{suggested}) {
+                                $suggested{rel2abs($_, $rule->{base})} = 1;
+                            }
+                            else {
+                                $nonsuggested{rel2abs($_, $rule->{base})} = 1;
+                            }
+                        }
+                    }
+                }
+                if (defined $defaults) {
+                    for (@$defaults) {
+                        $default{$_} = 1;
+                    }
+                }
+                elsif (@rules) {
+                    for (@{$rules[0]{to}}) {
+                        $default{rel2abs($_, $rules[0]{base})} = 1;
+                    }
+                }
+                 # Gradually narrow down criteria for suggestion
+                my @suggested = grep {
+                    ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
+                } targets;
+                if (@suggested > 12) {
+                    @suggested = grep {
+                        $default{$_} or !$nonfinal{$_} or $suggested{$_}
+                    } @suggested;
+                    if (@suggested > 12) {
+                        @suggested = grep {
+                            $default{$_} or $phonies{$_} or $suggested{$_}
+                        } @suggested;
+                        if (@suggested > 12) {
+                            @suggested = grep {
+                                $default{$_} or $suggested{$_}
+                            } @suggested;
+                        }
+                    }
                 }
                 say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
                 if (%custom_options) {
@@ -740,8 +775,8 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                         say "    $builtin_options{$_}{desc}";
                     }
                 }
-                say "Final targets:";
-                for (sort grep !$nonfinal_targets{$_}, keys %targets) {
+                say "Suggested targets:";
+                for (sort @suggested) {
                     say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
                 }
                 exit 1;
