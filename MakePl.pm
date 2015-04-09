@@ -886,28 +886,14 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         $_[0] eq '.' and return $_[0];
         if (index($_[0], '\\') == -1
         and index($_[0], '//') == -1
-        and index($_[0], '/.') == -1) {
+        and index($_[0], '/.') == -1
+        and index($_[0], '/', length($_[0])-1) != length($_[0])-1) {
             return $_[0];
         }
         my $p = $_[0];
-        $p =~ s/[\/\\]+/\//g;
-        1 while $p =~ s/\/(?:\.|(?!\.\.\/)[^\/]*\/\.\.)(?=\/|$)//;
+        $p =~ tr/\\/\//;
+        1 while $p =~ s/\/(?:\.?|(?!\.\.\/)[^\/]*\/\.\.)(?=\/|$)//;
         return $p;
-#        my $absolute = $_[0] =~ /^[\/\\]/;
-#        my @r;
-#        for (split /[\/\\]/, $_[0]) {
-#            if ($_ eq '..' and ($absolute or @r) and $r[-1] ne '..') {
-#                pop @r;
-#            }
-#            elsif ($_ eq '.') {
-#            }
-#            elsif ($_ eq '') {
-#            }
-#            else {
-#                push @r, $_;
-#            }
-#        }
-#        return ($absolute ? '/' : '') . join '/', @r;
     }
 
     sub rel2abs {
@@ -929,35 +915,30 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         return $abs;
     }
 
+    sub iofail { $_[0] or croak $_[1]; undef }
+
     sub slurp {
         my ($file, $bytes, $fail) = @_;
         $fail //= 1;
-        open my $F, '<', $file or
-            $fail ? (croak "Failed to open $file for reading: $! in call to slurp")
-                  : (return undef);
+        open my $F, '<', $file or return iofail $fail, "Failed to open $file for reading: $! in call to slurp";
         my $r;
         if (defined $bytes) {
-            defined read($F, $r, $bytes) or
-                $fail ? (croak "Failed to read $file: $! in call to slurp")
-                      : (return undef);
+            defined read($F, $r, $bytes) or return iofail $fail, "Failed to read $file: $! in call to slurp";
         }
         else {
             local $/; $r = <$F>;
-            defined $r or
-                $fail ? (croak "Failed to read $file: $! in call to slurp")
-                      : (return undef);
+            defined $r or return $fail, "Failed to read $file: $! in call to slurp";
         }
-        close $F or
-            $fail ? (croak "Failed to close $file: $! in call to slurp")
-                  : (return undef);
+        close $F or return $fail, "Failed to clode $file: $! in call to slurp";
         return $r;
     }
     sub splat {
-        my ($file, $string) = @_;
-        defined $string or croak "Cannot splat undef to $file";
-        open my $F, '>', $file or croak "Failed to open $file for writing: $! in call to splat";
-        print $F $string or croak "Failed to write to $file: $! in call to splat";
-        close $F or croak "Failed to close $file: $! in call to close";
+        my ($file, $string, $fail) = @_;
+        $fail //= 1;
+        defined $string or return iofail $fail, "Cannot splat undef to $file";
+        open my $F, '>', $file or return iofail $fail, "Failed to open $file for writing: $! in call to splat";
+        print $F $string or return iofail $fail, "Failed to write to $file: $! in call to splat";
+        close $F or return iofail $fail, "Failed to close $file: $! in call to close";
     }
     sub slurp_utf8 {
         require Encode;
@@ -1058,33 +1039,21 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
  # Generate a make.pl scaffold.
 if ($^S == 0) {  # We've been called directly
     $make_was_called = 1;  # Not really but supresses warning
-    if (@ARGV > 1 or (defined $ARGV[0] and $ARGV[0] eq '--help')) {
+    if (@ARGV > 1 or (defined $ARGV[0] and $ARGV[0] =~ /-?-h(?:elp)?/)) {
         say "\e[31m✗\e[0m Usage: perl $0 <directory (default: .)>";
         exit 1;
     }
-    my $loc = $ARGV[0];
-    defined $loc or $loc = cwd;
-    my $dir;
-    if (-d $loc) {
-        $loc = "$loc/make.pl";
-        $dir = $loc;
-    }
+    my $loc = defined $ARGV[0] ? canonpath($ARGV[0]) : cwd;
+    $loc = "$loc/make.pl" if -d $loc;
     if (-e $loc) {
         say "\e[31m✗\e[0m Did not generate $loc because it already exists.";
         exit 1;
     }
-    elsif ($loc =~ /^(.*)\/[^\/]*$/) {
-        $dir = $1;
-    }
-    else {
-        $dir = cwd;
-    }
+    my $dir = $loc =~ /^(.*)\/[^\/]*$/ ? $1 : cwd;
     my $path_to_pm = abs2rel(rel2abs(__FILE__), $dir);
     $path_to_pm =~ s/\/?MakePl\.pm$//;
     $path_to_pm =~ s/'/\\'/g;
-    my $pathext = $path_to_pm eq ''
-        ? ''
-        : ".'/$path_to_pm'";
+    my $pathext = $path_to_pm eq '' ? '' : ".'/$path_to_pm'";
     local $/;
     my $out = <DATA>;
     $out =~ s/◀PATHEXT▶/$pathext/;
