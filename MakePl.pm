@@ -165,6 +165,15 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                 }
             }
             else {
+                if ($rule->{options}{gendir}) {
+                    for (@{$rule->{to}}) {
+                        my $path = $rule->{base};
+                        while (/\G(.*?)\//g) {
+                            $path .= '/' . $1;
+                            mkdir $path or -d $path or die "Couldn't mkdir $path: $!\n";
+                        }
+                    }
+                }
                 $rule->{recipe}->($rule->{to}, $rule->{from});
             }
         }

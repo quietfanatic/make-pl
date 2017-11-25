@@ -9,7 +9,7 @@ https://github.com/quietfanatic/make-pl
   ./make.pl && run
 
 [Installation]
-  Just grab MakePl.pm and stuff it in your project directory.
+  Just clone this repo and stuff it in your project directory.
   This has no dependencies besides Perl >= 5.10 and its core modules.
 
 [Usage]
@@ -28,9 +28,12 @@ https://github.com/quietfanatic/make-pl
           or a subroutine which returns filenames.
        - The compile routine (AKA the recipe) is given two array refs as
           arguments containing the targets and the dependencies.
-       - There are only two options so far:
+       - Here are the available options:
            fork => 1
              - This rule can be run in parallel (in a forked child process).
+           gendir => 1
+             - Automatically generate the directory structures of all
+                targets of this rule.
            suggested => 0|1
              - This rule's targets will show up (or not) in the Suggested
                 Targets list in the --help message.
