@@ -905,15 +905,20 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         return $p;
     }
 
+    sub path_is_absolute {
+        my ($path) = @_;
+        return $path =~ /(?:\a:)?\//;
+    }
+
     sub rel2abs {
         my ($rel, $base) = @_;
         $base //= cwd;
-        return canonpath(rindex($rel, '/', 0) == 0 ? $rel : "$base/$rel");
+        return canonpath(path_is_absolute($rel) ? $rel : "$base/$rel");
     }
     sub abs2rel {
         my ($abs, $base) = @_;
         $abs = canonpath($abs);
-        rindex($abs, '/', 0) == 0 or return $abs;
+        path_is_absolute($abs) or return $abs;
         $base = defined($base) ? canonpath($base) : cwd;
         if ($abs eq $base) {
             return '.';
