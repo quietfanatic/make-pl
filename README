@@ -11,6 +11,7 @@ https://github.com/quietfanatic/make-pl
 [Installation]
   Just clone this repo and stuff it in your project directory.
   This has no dependencies besides Perl >= 5.10 and its core modules.
+  Alternatively, use this repo as a git submodule.
 
 [Usage]
   To run a make.pl:
@@ -150,3 +151,8 @@ https://github.com/quietfanatic/make-pl
   - This won't work if you have filenames with backslashes in them.
      I haven't decided whether this is a bug or a feature.
 
+[BONUS]
+  - If you use MakePl::C, the build system will follow #include "file"
+     directives in your C and C++ files, so if you update a header, all files
+     that include it will be rebuilt.  It will not follow #include <file>
+     directives.
