@@ -1,2 +1,4 @@
 test/to
 test/build-config
+
+.fuse_hidden*
