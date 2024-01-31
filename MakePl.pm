@@ -907,7 +907,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
 
     sub path_is_absolute {
         my ($path) = @_;
-        return $path =~ /(?:\a:)?\//;
+        return $path =~ /^(?:[a-zA-Z]:)?[\/\\]/;
     }
 
     sub rel2abs {
