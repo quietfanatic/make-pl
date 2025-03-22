@@ -3,7 +3,7 @@
 
 MakePl - Portable drop-in build system
 https://github.com/quietfanatic/make-pl
-2013-10-05
+2025-03-21
 
 USAGE: See the README in the above repo.
 
@@ -11,7 +11,7 @@ USAGE: See the README in the above repo.
 
 The MIT License (MIT)
 
-Copyright (c) 2013 Lewis Wall
+Copyright (c) 2025 Lewis Wall
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -81,7 +81,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     my $verbose = 0;
     my $simulate = 0;
     my $touch = 0;
-    my $jobs = 1;
+    my $jobs; # Simultaneous processes to run.
 
 # START, INCLUDE, END
 
@@ -254,6 +254,21 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
             }
             else {
                 eval {
+                    if (!defined($jobs)) {
+                        if (exists $ENV{NUMBER_OF_PROCESSORS}) {
+                             # Windows (untested!)
+                            $jobs = $ENV{NUMBER_OF_PROCESSORS} - 1;
+                        }
+                        elsif (-e '/proc/cpuinfo') {
+                             # Linux
+                            my $num = () = slurp('/proc/cpuinfo') =~ /^processor/mg;
+                            $jobs = $num - 1;
+                        }
+                        else {
+                             # Not familiar with this OS
+                            $jobs = 1;
+                        }
+                    }
                     if ($jobs > 1) {
                         my %jobs;
                         $SIG{INT} = sub {
@@ -826,7 +841,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         },
         jobs => {
             ref => \$jobs,
-            desc => '--jobs=<number> - Run this many parallel jobs if the rules support it',
+            desc => '--jobs=<number> - Run this many parallel jobs.  By default, one less than the number of cores',
             custom => 0
         },
     );
