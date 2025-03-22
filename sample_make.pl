@@ -34,10 +34,10 @@ sub module {
     }
 }
 
- # Find all C/C++ files and declare a step for them
+ # Find all C/C++ files and declare a step for each one
 module($_) for glob '*.c *.cpp */*.c */*.cpp */*/*.c */*/*.cpp';
 
- # An finally a cleanup step
+ # And finally a cleanup step
 step 'clean', [], sub {
     unlink $program, grep /\.o$/, targets;
 };

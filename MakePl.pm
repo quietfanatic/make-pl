@@ -47,7 +47,7 @@ use Carp 'croak';
 use subs qw(cwd chdir);
 
 our @EXPORT = qw(
-    make step rule phony subdep defaults include
+    make step rule phony subdep defaults include suggest
     targets exists_or_target
     slurp splat slurp_utf8 splat_utf8
     run which
@@ -70,6 +70,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     my @auto_subdeps;  # Functions that generate subdeps
     my %autoed_subdeps;  # Minimize calls to the above
     my $defaults;  # undef or array ref
+    my @suggestions;  # [target, description]
 # SYSTEM INTERACTION
     my %modtimes;  # Cache of file modification times
 # OPTIONS
@@ -177,47 +178,48 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
 
     sub say_recommended_targets () {
         say "Suggested targets:";
-        my (%nonfinal, %suggested, %nonsuggested, %default);
-        for my $step (@steps) {
-            resolve_deps($step);
-            $nonfinal{$_} = 1 for @{$step->{deps}};
-            if (defined $step->{options}{suggested}) {
-                for (@{$step->{to}}) {
-                    if ($step->{options}{suggested}) {
-                        $suggested{rel2abs($_, $step->{base})} = 1;
-                    }
-                    else {
-                        $nonsuggested{rel2abs($_, $step->{base})} = 1;
+        if (@suggestions) {
+            for (@suggestions) {
+                my $line = abs2rel($_->[0]);
+                if (target_is_default($_->[0])) { $line .= " (default)"; }
+                if (defined($_->[1])) { $line .= " : " . $_->[1]; }
+                say "    ", $line;
+            }
+        }
+        else {
+            my (%nonfinal, %default);
+            for my $step (@steps) {
+                resolve_deps($step);
+                $nonfinal{$_} = 1 for @{$step->{deps}};
+            }
+            if (defined $defaults) {
+                for (@$defaults) {
+                    $default{$_} = 1;
+                }
+            }
+             # Gradually narrow down criteria for suggestion
+             # TODO: simplify?
+            my @auto = grep {
+                ($default{$_} or $phonies{$_} or !$nonfinal{$_})
+            } targets();
+            if (@auto > 12) {
+                @auto = grep {
+                    $default{$_} or !$nonfinal{$_}
+                } @auto;
+                if (@auto > 12) {
+                    @auto = grep {
+                        $default{$_} or $phonies{$_}
+                    } @auto;
+                    if (@auto > 12) {
+                        @auto = grep {
+                            $default{$_}
+                        } @auto;
                     }
                 }
             }
-        }
-        if (defined $defaults) {
-            for (@$defaults) {
-                $default{$_} = 1;
+            for (sort @auto) {
+                say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
             }
-        }
-         # Gradually narrow down criteria for suggestion
-        my @suggested = grep {
-            ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
-        } targets();
-        if (@suggested > 12) {
-            @suggested = grep {
-                $default{$_} or !$nonfinal{$_} or $suggested{$_}
-            } @suggested;
-            if (@suggested > 12) {
-                @suggested = grep {
-                    $default{$_} or $phonies{$_} or $suggested{$_}
-                } @suggested;
-                if (@suggested > 12) {
-                    @suggested = grep {
-                        $default{$_} or $suggested{$_}
-                    } @suggested;
-                }
-            }
-        }
-        for (sort @suggested) {
-            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
         }
     }
 
@@ -516,6 +518,10 @@ END
 
     sub defaults {
         push @$defaults, map rel2abs($_), @_;
+    }
+
+    sub suggest ($;$) {
+        push @suggestions, [rel2abs($_[0]), $_[1]];
     }
 
     sub targets {

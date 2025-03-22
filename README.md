@@ -47,9 +47,6 @@ step <targets>, <dependencies>, <routine>, <options>?;
        - `gendir => 1`
            - Automatically generate the directory structures of all
              targets of this step.
-       - `suggested => 0|1`
-           - This step's targets will show up (or not) in the Suggested
-             Targets list in the `--help` message.
 ```
 phony <targets>, <dependencies>?, <routine>?, <options>?;
 ```
@@ -73,6 +70,8 @@ defaults <targets...>;
 - With no arguments, make.pl will build these targets.  The default default is
   to run the first step given in the workflow.
 ```
+suggest <target> <description>?;
+- Suggest this target in the usage documentation.
 targets
 ```
 - Returns all files or phonies that are the target of any step that has
