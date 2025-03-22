@@ -6,10 +6,10 @@ https://github.com/quietfanatic/make-pl
 
 ### About
 
-Don't make your users type more than one command to build.
-Don't make your users download and install some obscure build system.
-Program your build system in a real programming language.
-`./make.pl && run`
+- Don't make your users type more than one command to build.
+- Don't make your users download and install some obscure build system.
+- Program your build system in a real programming language.
+- `./make.pl && run`
 
 ### Installation
 
@@ -71,7 +71,9 @@ defaults <targets...>;
   to run the first step given in the workflow.
 ```
 suggest <target> <description>?;
+```
 - Suggest this target in the usage documentation.
+```
 targets
 ```
 - Returns all files or phonies that are the target of any step that has
