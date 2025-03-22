@@ -1,4 +1,3 @@
-
 MakePl
 ======
 
@@ -34,9 +33,9 @@ make;
 ```
 - Put this at the end of the script, whether standalone or included.
 ```
-rule <targets>, <dependencies>, <routine>, <options>?
+step <targets>, <dependencies>, <routine>, <options>?;
 ```
-- Defines a compilation rule like in a Makefile.
+- Defines a compilation step like in a Makefile.
    - `<targets>` can be a single filename or an array ref of filenames.
    - `<dependencies>` can be a single filename, an array ref of filenames,
           or a subroutine which returns filenames.
@@ -44,55 +43,56 @@ rule <targets>, <dependencies>, <routine>, <options>?
           arguments containing the targets and the dependencies.
    - Here are the available options:
        - `fork => 1`
-           - This rule can be run in parallel (in a forked child process).
+           - This step can be run in parallel (in a forked child process).
        - `gendir => 1`
            - Automatically generate the directory structures of all
-             targets of this rule.
+             targets of this step.
        - `suggested => 0|1`
-           - This rule's targets will show up (or not) in the Suggested
+           - This step's targets will show up (or not) in the Suggested
              Targets list in the `--help` message.
 ```
-phony <targets>, <dependencies>?, <routine>?, <options>?
+phony <targets>, <dependencies>?, <routine>?, <options>?;
 ```
-- like rule, but the target(s) do not correspond to actual files
+- like step, but the target(s) do not correspond to actual files.  They will
+  always be considered stale.
 ```
-subdep <targets>, <dependencies>
+subdep <targets>, <dependencies>;
 ```
 - Establishes that anything that depends on the target(s) also depends
   on the given dependencies, e.g. because of an `#include` statement.
 ```
-subdep <routine>
+subdep <routine>;
 ```
 - Provides a way to automatically deduce subdeps.  The routine will be called
   with a filename and is expected to return some more filenames.  See
   `sample_make.pl` in this repo for a function that'll scan C/C++ files for
   `#include` statements.
 ```
-defaults <targets...>
+defaults <targets...>;
 ```
 - With no arguments, make.pl will build these targets.  The default default is
-  to run the first rule given in the workflow.
+  to run the first step given in the workflow.
 ```
 targets
 ```
-- Returns all files or phonies that are the target of any rule that has
+- Returns all files or phonies that are the target of any step that has
   been declared so far.
 ```
 exists_or_target <filename>
 ```
 - Checks if the file exists or there's a target for it.
 ```
-include <filenames...>
+include <filenames...>;
 ```
-- Include the targets and rules in another make.pl.  Relative filenames, working
+- Include the targets and steps in another make.pl.  Relative filenames, working
   directories, etc. all do The Right Thing.  Cyclical includes are fine and even
   encouraged.
 ```
-chdir <directory>
+chdir <directory>;
 ```
 - Please use this instead of `CORE::chdir` or `Cwd::chdir`.
 ```
-run <command>
+run <command>;
 ```
 - Like the builtin `system()`, but aborts the build process if the command gives a
   non-zero exit status, and also prints the command when the `--verbose` option is
@@ -104,13 +104,13 @@ slurp <filename>, <length>?, <fail>?
   only reads the first `<length>` bytes.  Dies on failure unless `<fail>` is
   provided and false.
 ```
-splat <filename>, <string>, <fail>?
+splat <filename>, <string>, <fail>?;
 ```
 - Writes the string to the filename, clobbering any previous contents.  Dies on
   failure unless `<fail>` is false.
 ```
 slurp_utf8 <filename>, <length>?, <fail>?
-splat_utf8 <filename>, <string>, <fail>?
+splat_utf8 <filename>, <string>, <fail>?;
 ```
 - Like slurp and splat, but with UTF-8-encoded files.  This may become the
   default soon.
@@ -141,7 +141,7 @@ just work how you expect them to.
   directory.
 - When you import `MakePl`, the working directory is always set to the same
   directory that the make.pl is in, no matter where you invoked it from.
-- All recipes will be run in the same working directory that the rule was
+- All recipes will be run in the same working directory that the step was
   defined in.
 - Even if one make.pl includes another make.pl, each uses filenames relative to
   its own directory.  That is, if `./make.pl` says `modules/cake/lime` and

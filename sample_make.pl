@@ -1,7 +1,6 @@
 #!/usr/bin/perl
 use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')};
 use MakePl;  # Automatically imports strict and warnings
-use Cwd 'realpath';
 
  # Sample make.pl
  # https://github.com/quietfanatic/make-pl
@@ -20,7 +19,7 @@ my $ld = 'g++ -Wall';
 my @includes = (cwd);
 
  # Link all .o files into the final program
-rule $program, sub { grep /\.o$/, targets }, sub {
+step $program, sub { grep /\.o$/, targets }, sub {
     run "$ld @{$_[1]} -o $_[0][0]";
 };
 
@@ -30,16 +29,16 @@ sub module {
     $file =~ /^(.*)\.c(pp)?$/ or die "Filename given to module() wasn't a .c[pp] file: $file\n";
     my $base = $1;
     my $compiler = $2 ? $cppc : $cc;
-    rule "$base.o", $file, sub {
+    step "$base.o", $file, sub {
         run "$compiler -c \Q$file\E -o \Q$base.o\E";
     }
 }
 
- # Find all C/C++ files and declare a rule for them
+ # Find all C/C++ files and declare a step for them
 module($_) for glob '*.c *.cpp */*.c */*.cpp */*/*.c */*/*.cpp';
 
- # An finally a cleanup rule
-rule 'clean', [], sub {
+ # An finally a cleanup step
+step 'clean', [], sub {
     unlink $program, grep /\.o$/, targets;
 };
 
@@ -55,7 +54,7 @@ subdep sub {
     my @r;
     for (@incs) {
         for my $I (@includes, $base) {
-            push @r, realpath("$I/$_") if -e("$I/$_");
+            push @r, canonpath("$I/$_") if -e("$I/$_");
         }
     }
     return @r;

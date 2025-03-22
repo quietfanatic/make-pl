@@ -47,7 +47,7 @@ use Carp 'croak';
 use subs qw(cwd chdir);
 
 our @EXPORT = qw(
-    make rule phony subdep defaults include
+    make step rule phony subdep defaults include
     targets exists_or_target
     slurp splat slurp_utf8 splat_utf8
     run which
@@ -63,9 +63,9 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     my $this_file = rel2abs(__FILE__);
     my $make_was_called = 0;
 # RULES AND STUFF
-    my @rules;  # All registered rules
+    my @steps;  # All registered steps
     my %phonies;  # Targets that aren't really files
-    my %targets;  # List rules to build each target
+    my %targets;  # List steps to build each target
     my %subdeps;  # Registered subdeps by file
     my @auto_subdeps;  # Functions that generate subdeps
     my %autoed_subdeps;  # Minimize calls to the above
@@ -152,26 +152,72 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
         return "\n";  # Marker to hand to die
     }
 
-    sub do_rule {
-        my ($rule) = @_;
-        if (!$simulate and defined $rule->{recipe}) {
+    sub do_step {
+        my ($step) = @_;
+        if (!$simulate and defined $step->{recipe}) {
             if ($touch) {
-                for (@{$rule->{to}}) {
+                for (@{$step->{to}}) {
                     utime(undef, undef, $_);
                 }
             }
             else {
-                if ($rule->{options}{gendir}) {
-                    for (@{$rule->{to}}) {
-                        my $path = $rule->{base};
+                if ($step->{options}{gendir}) {
+                    for (@{$step->{to}}) {
+                        my $path = $step->{base};
                         while (/\G(.*?)\//g) {
                             $path .= '/' . $1;
                             mkdir $path or -d $path or die "Couldn't mkdir $path: $!\n";
                         }
                     }
                 }
-                $rule->{recipe}->($rule->{to}, $rule->{from});
+                $step->{recipe}->($step->{to}, $step->{from});
             }
+        }
+    }
+
+    sub say_recommended_targets () {
+        say "Suggested targets:";
+        my (%nonfinal, %suggested, %nonsuggested, %default);
+        for my $step (@steps) {
+            resolve_deps($step);
+            $nonfinal{$_} = 1 for @{$step->{deps}};
+            if (defined $step->{options}{suggested}) {
+                for (@{$step->{to}}) {
+                    if ($step->{options}{suggested}) {
+                        $suggested{rel2abs($_, $step->{base})} = 1;
+                    }
+                    else {
+                        $nonsuggested{rel2abs($_, $step->{base})} = 1;
+                    }
+                }
+            }
+        }
+        if (defined $defaults) {
+            for (@$defaults) {
+                $default{$_} = 1;
+            }
+        }
+         # Gradually narrow down criteria for suggestion
+        my @suggested = grep {
+            ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
+        } targets();
+        if (@suggested > 12) {
+            @suggested = grep {
+                $default{$_} or !$nonfinal{$_} or $suggested{$_}
+            } @suggested;
+            if (@suggested > 12) {
+                @suggested = grep {
+                    $default{$_} or $phonies{$_} or $suggested{$_}
+                } @suggested;
+                if (@suggested > 12) {
+                    @suggested = grep {
+                        $default{$_} or $suggested{$_}
+                    } @suggested;
+                }
+            }
+        }
+        for (sort @suggested) {
+            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
         }
     }
 
@@ -219,62 +265,15 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                     elsif ($_ eq '--help') {
                         print <<END;
 \e[31m✗\e[0m Usage: $0 <options> <targets>"
-    --jobs=<num> : Run this many parallel jobs if the rules support it.
+    --jobs=<num> : Run this many parallel jobs if the steps support it.
                    The default value is one less than the number of processors.
-    --force : Skip modification time checks and always run the rules.
+    --force : Skip modification time checks and always run the steps.
     --verbose : Show sub-dependencies and shell commands.
-    --simulate : Show rules that would be run but don't run them.
-    --touch : Update existing files' modtimes but don't actually run any rules.
+    --simulate : Show steps that would be run but don't run them.
+    --touch : Update existing files' modtimes but don't actually run any steps.
     --list-targets : List all declared targets.
-Suggested targets:
 END
-                        my (%nonfinal, %suggested, %nonsuggested, %default);
-                        for my $rule (@rules) {
-                            resolve_deps($rule);
-                            $nonfinal{$_} = 1 for @{$rule->{deps}};
-                            if (defined $rule->{options}{suggested}) {
-                                for (@{$rule->{to}}) {
-                                    if ($rule->{options}{suggested}) {
-                                        $suggested{rel2abs($_, $rule->{base})} = 1;
-                                    }
-                                    else {
-                                        $nonsuggested{rel2abs($_, $rule->{base})} = 1;
-                                    }
-                                }
-                            }
-                        }
-                        if (defined $defaults) {
-                            for (@$defaults) {
-                                $default{$_} = 1;
-                            }
-                        }
-                        elsif (@rules) {
-                            for (@{$rules[0]{to}}) {
-                                $default{rel2abs($_, $rules[0]{base})} = 1;
-                            }
-                        }
-                         # Gradually narrow down criteria for suggestion
-                        my @suggested = grep {
-                            ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
-                        } targets();
-                        if (@suggested > 12) {
-                            @suggested = grep {
-                                $default{$_} or !$nonfinal{$_} or $suggested{$_}
-                            } @suggested;
-                            if (@suggested > 12) {
-                                @suggested = grep {
-                                    $default{$_} or $phonies{$_} or $suggested{$_}
-                                } @suggested;
-                                if (@suggested > 12) {
-                                    @suggested = grep {
-                                        $default{$_} or $suggested{$_}
-                                    } @suggested;
-                                }
-                            }
-                        }
-                        for (sort @suggested) {
-                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
-                        }
+                        say_recommended_targets();
                         exit 1;
 
                     }
@@ -298,7 +297,9 @@ END
                     grep plan_target($plan, $_), @$defaults;
                 }
                 else {
-                    plan_rule($plan, $rules[0]);
+                    say "\e[31m✗\e[0m No default targets.";
+                    say_recommended_targets();
+                    exit(1);
                 }
             };
             if ($@) {
@@ -308,8 +309,8 @@ END
             }
              # Execute the plan.
             my @program = @{$plan->{program}};
-            if (not @rules) {
-                say "\e[32m✓\e[0m Nothing was done because no rules have been declared.";
+            if (not @steps) {
+                say "\e[32m✓\e[0m Nothing was done because no steps have been declared.";
             }
             elsif (not grep defined($_->{recipe}), @program) {
                 say "\e[32m✓\e[0m All up to date.";
@@ -344,7 +345,7 @@ END
                         my $do_wait;
                         $do_wait = sub {
                             keys(%jobs) > 0 or do {
-                                die "Tried to wait on no jobs -- internal planner error?\n", join "\n", map show_rule($_), @program;
+                                die "Tried to wait on no jobs -- internal planner error?\n", join "\n", map show_step($_), @program;
                             };
                             my $child = wait;
                             if ($child == -1) {
@@ -365,24 +366,24 @@ END
                         };
                         while (@program || %jobs) {
                             $do_wait->() if keys(%jobs) >= $jobs;
-                            my $rule;
+                            my $step;
                             for (0..$#program) {
                                 next unless $program[$_]{options}{fork};
                                  # Don't run program if its deps haven't been finished
                                 next if grep !$_->{done}, @{$program[$_]{follow}};
-                                $rule = splice @program, $_, 1;
+                                $step = splice @program, $_, 1;
                                 last;
                             }
-                            if (defined $rule) {
-                                chdir $rule->{base};
-                                status "⚙ ", show_rule($rule);
-                                delazify($rule);
-                                pipe($rule->{output}, my $OUTPUT) or die "pipe failed: $!\n";
-                                binmode $rule->{output}, ':utf8';
+                            if (defined $step) {
+                                chdir $step->{base};
+                                status "⚙ ", show_step($step);
+                                delazify($step);
+                                pipe($step->{output}, my $OUTPUT) or die "pipe failed: $!\n";
+                                binmode $step->{output}, ':utf8';
                                 binmode $OUTPUT, ':utf8';
                                 if (my $child = fork // die "Failed to fork: $!\n") {
                                      # parent
-                                    $jobs{$child} = $rule;
+                                    $jobs{$child} = $step;
                                 }
                                 else {  # child
                                      # Don't fall out of the eval {} out there
@@ -391,7 +392,7 @@ END
                                     open STDOUT, '>&', $OUTPUT or die "Could not reopen STDOUT: $!\n";
                                     close STDERR;
                                     open STDERR, '>&', $OUTPUT or die "Could not reopen STDERR: $!\n";
-                                    do_rule($rule);
+                                    do_step($step);
                                     exit 0;
                                 }
                                 close $OUTPUT;
@@ -400,21 +401,21 @@ END
                                 $do_wait->();
                             }
                             else {  # Do a non-parallel job
-                                my $rule = shift @program;
-                                chdir $rule->{base};
-                                status "⚙ ", show_rule($rule);
-                                delazify($rule);
-                                do_rule($rule);
-                                $rule->{done} = 1;
+                                my $step = shift @program;
+                                chdir $step->{base};
+                                status "⚙ ", show_step($step);
+                                delazify($step);
+                                do_step($step);
+                                $step->{done} = 1;
                             }
                         }
                     }
                     else {
-                        for my $rule (@program) {
-                            chdir $rule->{base};
-                            status "⚙ ", show_rule($rule);
-                            delazify($rule);
-                            do_rule($rule);
+                        for my $step (@program) {
+                            chdir $step->{base};
+                            status "⚙ ", show_step($step);
+                            delazify($step);
+                            do_step($step);
                         }
                     }
                 };
@@ -452,10 +453,10 @@ END
 
 # RULES AND DEPENDENCIES
 
-    sub create_rule {
+    sub create_step {
         my ($to, $from, $recipe, $options, $package, $file, $line) = @_;
-        ref $recipe eq 'CODE' or !defined $recipe or croak "Non-code recipe given to rule";
-        my $rule = {
+        ref $recipe eq 'CODE' or !defined $recipe or croak "Non-code recipe given to step";
+        my $step = {
             caller_file => $current_file,
             caller_line => $line,
             base => cwd,
@@ -471,22 +472,23 @@ END
             done => 0,
             output => undef,
         };
-        push @rules, $rule;
-        for (@{$rule->{to}}) {
-            push @{$targets{rel2abs($_)}}, $rule;
+        push @steps, $step;
+        for (@{$step->{to}}) {
+            push @{$targets{rel2abs($_)}}, $step;
         }
     }
 
-    sub rule ($$$;$) {
-        create_rule($_[0], $_[1], $_[2], $_[3] // {}, caller);
+    sub step ($$$;$) {
+        create_step($_[0], $_[1], $_[2], $_[3] // {}, caller);
     }
+    sub rule ($$$;$) { &step(@_); }
 
     sub phony ($;$$$) {
         my ($to, $from, $recipe, $options) = @_;
         for (arrayify($to)) {
             $phonies{rel2abs($_)} = 1;
         }
-        create_rule($to, $from, $recipe, $options // {}, caller) if defined $from;
+        create_step($to, $from, $recipe, $options // {}, caller) if defined $from;
     }
 
     sub subdep ($;$) {
@@ -533,9 +535,9 @@ END
     }
     sub delazify {
          # Works on subdeps too
-        my ($rule) = @_;
-        if (ref $rule->{from} eq 'CODE') {
-            $rule->{from} = [$rule->{from}(@{$rule->{to}})];
+        my ($step) = @_;
+        if (ref $step->{from} eq 'CODE') {
+            $step->{from} = [$step->{from}(@{$step->{to}})];
         }
     }
 
@@ -562,16 +564,16 @@ END
         } @new;
     }
     sub resolve_deps {
-        my ($rule) = @_;
-        return if defined $rule->{deps};
+        my ($step) = @_;
+        return if defined $step->{deps};
          # Get the realpaths of all dependencies and their subdeps
-        chdir $rule->{base};
-        delazify($rule);
+        chdir $step->{base};
+        delazify($step);
          # Depend on the build script and this module too.
-        my @deps = (realpaths(@{$rule->{from}}), $rule->{caller_file}, $this_file);
+        my @deps = (realpaths(@{$step->{from}}), $step->{caller_file}, $this_file);
          # Using this style of loop because @deps will keep expanding.
         for (my $i = 0; $i < @deps; $i++) {
-            defined $deps[$i] or die "Undef dependency given to rule at $rule->{caller_file} line $rule->{caller_line}\n";
+            defined $deps[$i] or die "Undef dependency given to step at $step->{caller_file} line $step->{caller_line}\n";
             push_new(\@deps, get_auto_subdeps($deps[$i]));
             for my $subdep (@{$subdeps{$deps[$i]}}) {
                 chdir $subdep->{base};
@@ -579,11 +581,11 @@ END
                 push_new(\@deps, realpaths(@{$subdep->{from}}));
             }
         }
-        chdir $rule->{base};
-        $rule->{deps} = [@deps];
+        chdir $step->{base};
+        $step->{deps} = [@deps];
     }
 
-    sub show_rule ($) {
+    sub show_step ($) {
         if ($verbose) {
             resolve_deps($_[0]);
             return "@{$_[0]{to}} ← " . join ' ', map abs2rel($_), @{$_[0]{deps}};
@@ -592,8 +594,8 @@ END
             return "@{$_[0]{to}} ← " . join ' ', @{$_[0]{from}};
         }
     }
-    sub debug_rule ($) {
-        return "$_[0]{caller_file}:$_[0]{caller_line}: " . directory_prefix($_[0]{base}) . show_rule($_[0]);
+    sub debug_step ($) {
+        return "$_[0]{caller_file}:$_[0]{caller_line}: " . directory_prefix($_[0]{base}) . show_step($_[0]);
     }
 
     sub target_is_default ($) {
@@ -602,13 +604,6 @@ END
             return $is;
         }
         else {
-            my $rule = $rules[0];
-            defined $rule or return 0;
-            for (@{$rule->{to}}) {
-                if (rel2abs($_, $rule->{base}) eq $_[0]) {
-                    return 1;
-                }
-            }
             return 0;
         }
     }
@@ -771,61 +766,61 @@ END
 
     sub plan_target {
         my ($plan, $target) = @_;
-         # Make sure the file exists or there's a rule for it
+         # Make sure the file exists or there's a step for it
         unless ($targets{$target} or fexists($target)) {
             my $rel = abs2rel($target, $original_base);
             my $mess = "☢ Cannot find or make $rel ($target)" . (@{$plan->{stack}} ? ", required by\n" : "\n");
-            for my $rule (reverse @{$plan->{stack}}) {
-                $mess .= "\t" . debug_rule($rule) . "\n";
+            for my $step (reverse @{$plan->{stack}}) {
+                $mess .= "\t" . debug_step($step) . "\n";
             }
             die status($mess);
         }
-         # In general, there should be only rule per target, but there can be more.
-        return grep plan_rule($plan, $_), @{$targets{$target}};
+         # In general, there should be only step per target, but there can be more.
+        return grep plan_step($plan, $_), @{$targets{$target}};
     }
 
-    sub plan_rule {
-        my ($plan, $rule) = @_;
+    sub plan_step {
+        my ($plan, $step) = @_;
          # Register dependency for parallel scheduling.
         if (@{$plan->{stack}}) {
-            push @{$plan->{stack}[-1]{follow}}, $rule;
+            push @{$plan->{stack}[-1]{follow}}, $step;
         }
          # detect loops
-        if (not defined $rule->{planned}) {
+        if (not defined $step->{planned}) {
             my $mess = "☢ Dependency loop\n";
             for my $old (reverse @{$plan->{stack}}) {
-                $mess .= "\t" . debug_rule($old) . "\n";
-                die status($mess) if $rule eq $old;  # reference compare
+                $mess .= "\t" . debug_step($old) . "\n";
+                die status($mess) if $step eq $old;  # reference compare
             }
             Carp::confess $mess . "\t...oh wait, false alarm.  Which means there's a bug in make.pm.\nDetected";
         }
-        elsif ($rule->{planned}) {
-            return $rule->{stale};  # Already planned
+        elsif ($step->{planned}) {
+            return $step->{stale};  # Already planned
         }
          # Commit to planning
-        push @{$plan->{stack}}, $rule;
-        $rule->{planned} = undef;  # Mark that we're currently planning this
+        push @{$plan->{stack}}, $step;
+        $step->{planned} = undef;  # Mark that we're currently planning this
 
-        resolve_deps($rule);
+        resolve_deps($step);
          # always recurse to plan_target
-        my $stale = grep plan_target($plan, $_), @{$rule->{deps}};
+        my $stale = grep plan_target($plan, $_), @{$step->{deps}};
          # chdir precisely now.
-        chdir $rule->{base};
+        chdir $step->{base};
         $stale ||= $force;
-        $stale ||= $rule->{check_stale}() if defined $rule->{check_stale};
+        $stale ||= $step->{check_stale}() if defined $step->{check_stale};
         $stale ||= grep {
             my $abs = rel2abs($_);
-            !fexists($abs) or grep modtime($abs) < modtime($_), @{$rule->{deps}};
-        } @{$rule->{to}};
+            !fexists($abs) or grep modtime($abs) < modtime($_), @{$step->{deps}};
+        } @{$step->{to}};
         if ($stale) {
-            push @{$plan->{program}}, $rule;
+            push @{$plan->{program}}, $step;
         }
         else {
-            $rule->{done} = 1;  # Don't confuse parallel scheduler.
+            $step->{done} = 1;  # Don't confuse parallel scheduler.
         }
-         # Done planning this rule
-        $rule->{planned} = 1;
-        $rule->{stale} = $stale;
+         # Done planning this step
+        $step->{planned} = 1;
+        $step->{stale} = $stale;
         pop @{$plan->{stack}};
         return $stale;
     }
@@ -867,10 +862,10 @@ __DATA__
 use lib do {__FILE__ =~ /^(.*)[\/\\]/; ($1||'.')◀PATHEXT▶};
 use MakePl;
 
- # Sample rules
-rule \$program, \$main, sub {
+ # Sample steps
+step \$program, \$main, sub {
     run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
 };
-rule 'clean', [], sub { unlink \$program; };
+step 'clean', [], sub { unlink \$program; };
 
 make;

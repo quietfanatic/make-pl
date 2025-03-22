@@ -15,7 +15,7 @@ option('asdf', \$config{asdf});
 option('fdsa0', \$config{fdsa}[0]);
 option('fdsa1', \$config{fdsa}[1]);
 
-rule 'to', ['from', 'build-config'], sub {
+step 'to', ['from', 'build-config'], sub {
     run "cat from > to";
 };
 phony 'clean', '', sub {
