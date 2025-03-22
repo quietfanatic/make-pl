@@ -242,7 +242,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                     elsif ($_ eq '--') {
                         $no_more_options = 1;
                     }
-                    elsif ($_ =~ /^--jobs=(\d+)$/) {
+                    elsif ($_ =~ /^--jobs=(\d+)$/s) {
                         $jobs = $1;
                     }
                     elsif ($_ eq '--force') {
@@ -257,10 +257,9 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                     elsif ($_ eq '--touch') {
                         $touch = 1;
                     }
-                    elsif ($_ eq '--list-targets') {
-                        say "\e[31m✗\e[0m All targets:";
+                    elsif ($_ eq '--targets') {
                         for (sort keys %targets) {
-                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
+                            say abs2rel($_), target_is_default($_) ? " (default)" : "";
                         }
                         exit 1;
                     }
@@ -273,11 +272,14 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     --verbose : Show sub-dependencies and shell commands.
     --simulate : Show steps that would be run but don't run them.
     --touch : Update existing files' modtimes but don't actually run any steps.
-    --list-targets : List all declared targets.
+    --targets : List all declared targets.
 END
                         say_recommended_targets();
                         exit 1;
 
+                    }
+                    elsif ($_ =~ /^-/s) {
+                        say "\e[31m✗\e[0m Unrecognized option $_.  Use --help for options.";
                     }
                     else {
                         push @args, $_;
