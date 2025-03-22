@@ -801,7 +801,7 @@ END
                 $mess .= "\t" . debug_step($old) . "\n";
                 die status($mess) if $step eq $old;  # reference compare
             }
-            Carp::confess $mess . "\t...oh wait, false alarm.  Which means there's a bug in make.pm.\nDetected";
+            Carp::confess $mess . "\t...oh wait, false alarm.  Which means there's a bug in MakePl.pm.\nDetected";
         }
         elsif ($step->{planned}) {
             return $step->{stale};  # Already planned
@@ -873,8 +873,8 @@ use MakePl;
 
  # Sample steps
 step \$program, \$main, sub {
-    run "gcc -Wall \\Q\$main\\E -o \\Q\$program\\E";
-};
+    run 'gcc', '-Wall', $main, '-o', $program;
+}
 step 'clean', [], sub { unlink \$program; };
 
 make;

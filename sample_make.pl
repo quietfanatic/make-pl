@@ -13,7 +13,7 @@ use MakePl;  # Automatically imports strict and warnings
  #
  # TODO: This file is not sufficiently tested!
 
- # Globals at top for easy tweaking
+ # Compiler flags etc. up top for easy tweaking
 my $program = 'program';
 my @cc = (qw(gcc -Wall));
 my @cppc = (qw(g++ -Wall));

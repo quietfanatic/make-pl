@@ -27,7 +27,7 @@ To generate a bare-bones make.pl:
 ```
 perl MakePl.pm <directory (defaults to .)>
 ```
-### Quick Reference
+### Reference
 ```
 make;
 ```
@@ -91,7 +91,8 @@ include <filenames...>;
 ```
 chdir <directory>;
 ```
-- Please use this instead of `CORE::chdir` or `Cwd::chdir`.
+- Please use this instead of `CORE::chdir` or `Cwd::chdir`, otherwise
+  `$ENV{PWD}` will become incorrect.
 ```
 run <command>;
 ```
@@ -124,7 +125,7 @@ which <command>
 ```
 canonpath <filename>
 ```
-- Gets rid of extraneous ..s and things like that.  Also changes all backslashes
+- Gets rid of extraneous `..`s and things like that.  Also changes all backslashes
   into forward slashes.
 ```
 rel2abs <filename>, <base>?
@@ -133,37 +134,44 @@ abs2rel <filename>, <base>?
 - Convert between relative and absolute filenames, relative to the current
   working directory if `<base>` is not provided.
 
-### Working Directories
-
-MakePl tries to make working directories a lexical concept, so that things
-just work how you expect them to.
-
-- All relative filenames given to the API are relative to the current working
-  directory.
-- When you import `MakePl`, the working directory is always set to the same
-  directory that the make.pl is in, no matter where you invoked it from.
-- All recipes will be run in the same working directory that the step was
-  defined in.
-- Even if one make.pl includes another make.pl, each uses filenames relative to
-  its own directory.  That is, if `./make.pl` says `modules/cake/lime` and
-  `modules/cake/make.pl` says `lime`, they are talking about the same file.
-- Filenames given on the command line are relative to the current working
-  directory of the command line, not of the make.pl.
-- If you want to manually change directories, use the chdir provided by this
-  module.  Using `CORE::chdir` will desync `$ENV{PWD}`.
-
 ### Configuration
 
 There are two recommended ways to do local build configuration:
 
 - You can declare different build configurations (debug, release, etc) and
-  duplicate targets between them.  Each unused target only adds about 20
-  microseconds to the script runtime.
-- For more detailed configuration (compiler flags, library locations, etc) it's
-  recommended to put global variables at the top of your build script where they
-  can be easily changed.  The build script's modification time is monitored by
-  the dependency tracker, so if you change it, everything will be properly
-  rebuilt.
+  duplicate targets between them.  Each unused target adds less than 0.00002
+  seconds to the script runtime, so duplicate away.  If you really think you
+  have too many build configurations, you can just comment out the ones you
+  don't use very often.
+- For more detailed configuration (compiler flags, library locations, etc) you
+  can simply put global variables at the top of your build script where they can
+  be easily changed.  The build script is an implicit dependency for every step,
+  so if you change it, everything will be rebuilt.
+
+See `sample_make.pl` for examples of both of these.
+
+An older version of this module had a special configuration system complete with
+custom command-line options and json serialization, but its complexity far
+outweighed its value, and I found myself not using it in most of my projects.
+
+### Working Directories
+
+MakePl tries to make working directories a lexical concept, so that things
+just work how you expect them to.
+
+- When you import `MakePl`, the working directory is always set to the same
+  directory that the make.pl is in, no matter where you invoked it from.
+- Each step will be run in the working directory that it was declared in.
+- Even if one make.pl includes another make.pl, each uses filenames relative to
+  its own directory.  That is, if `./make.pl` says `dessert/cake/lime` and
+  `dessert/cake/make.pl` says `lime`, they are talking about the same file.
+- All relative filenames given to the API are relative to the current working
+  directory.
+- Filenames given on the command line are relative to the current working
+  directory of the command line, not of the make.pl being invoked.
+- If you want to manually change directories, use the chdir provided by this
+  module.  Using `CORE::chdir` will desync `$ENV{PWD}` which subprocesses may
+  be relying on.
 
 ### Recommendations
 
@@ -174,17 +182,17 @@ There are two recommended ways to do local build configuration:
   include functionality.  If two make.pl files mutually include one another, you
   can invoke either one to do stuff; the following commands would be equivalent:
 ```
-$ ./make.pl modules/cake/lime
-$ modules/cake/make.pl modules/cake/lime
-$ cd modules/cake; ./make.pl lime
+$ ./make.pl dessert/cake/lime
+$ dessert/cake/make.pl dessert/cake/lime
+$ cd dessert/cake; ./make.pl lime
 ```
   This does cause one counterintuitive effect.  If you want to use a phony
   target belonging to a make.pl in a different directory, you must prefix
   the phony target with that directory (as if it's actually a file).
 ```
-$ modules/cake/make.pl clean  # oops, this cleans the whole project
-$ modules/cake/make.pl modules/cake/clean  # just clean the cake
-$ ./make.pl modules/cake/clean  # this works too
+$ desset/cake/make.pl clean  # oops, this cleans the whole project
+$ desset/cake/make.pl dessert/cake/clean  # just clean the cake
+$ ./make.pl desset/cake/clean  # this works too
 ```
 - After the previous point it goes without saying, but you can invoke a
   make.pl from any directory, not just the one it's in, provided the make.pl
@@ -197,8 +205,6 @@ use MakePl;
   something like `.'/tools'` if `MakePl.pm` is in the directory `tools`. If you
   used `perl MakePl.pm` to generate a make.pl, it'll have done this for you.
 
-- Because your build script is in a real programming language and not a DSL, you
-  can actually do real abstraction.  See `sample_make.pl` for some examples.
 - This module is entirely symlink-ignorant.  If you use functions that reduce
   symlinks like `Cwd::realpath`, you may cause confusion.
 - This module won't work if you have filenames with backslashes in them.  I
