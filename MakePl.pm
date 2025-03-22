@@ -273,6 +273,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     --simulate : Show steps that would be run but don't run them.
     --touch : Update existing files' modtimes but don't actually run any steps.
     --targets : List all declared targets.
+    -- : No more options.
 END
                         say_recommended_targets();
                         exit 1;
