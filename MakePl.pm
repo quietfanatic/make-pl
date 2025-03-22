@@ -47,7 +47,7 @@ use Carp 'croak';
 use subs qw(cwd chdir);
 
 our @EXPORT = qw(
-    make rule phony subdep defaults include config option
+    make rule phony subdep defaults include
     targets exists_or_target
     slurp splat slurp_utf8 splat_utf8
     run which
@@ -72,12 +72,8 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
     my $defaults;  # undef or array ref
 # SYSTEM INTERACTION
     my %modtimes;  # Cache of file modification times
-# CONFIGURATION
-    my %configs;  # Set of registered config names, for cosmetic purposes only
-    my %builtin_options;  # Defined later
-    my %custom_options;  # Kept only for the help message
-    my %options;  # Cache of command-line options
-    my $force = 0; # Flags set from options
+# OPTIONS
+    my $force = 0;
     my $verbose = 0;
     my $simulate = 0;
     my $touch = 0;
@@ -190,31 +186,97 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
              # Recognize builtin options and complain at unrecognized ones
             my @args;
             eval {
-                my $double_minus;
+                my $no_more_options = 0;
                 for (@ARGV) {
-                    if ($double_minus) {
+                    if ($no_more_options) {
                         push @args, $_;
                     }
                     elsif ($_ eq '--') {
-                        $double_minus = 1;
+                        $no_more_options = 1;
                     }
-                    elsif (/^--(no-)?([^=]*)(?:=(.*))?$/) {
-                        my ($no, $name, $val) = ($1, $2, $3);
-                        if (exists $custom_options{$name}) {
-                             # We already processed this
+                    elsif ($_ =~ /^--jobs=(\d+)$/) {
+                        $jobs = $1;
+                    }
+                    elsif ($_ eq '--force') {
+                        $force = 1;
+                    }
+                    elsif ($_ eq '--verbose') {
+                        $verbose = 1;
+                    }
+                    elsif ($_ eq '--simulate') {
+                        $simulate = 1;
+                    }
+                    elsif ($_ eq '--touch') {
+                        $touch = 1;
+                    }
+                    elsif ($_ eq '--list-targets') {
+                        say "\e[31m✗\e[0m All targets:";
+                        for (sort keys %targets) {
+                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
                         }
-                        elsif (my $opt = $builtin_options{$name}) {
-                            if (ref $opt->{ref} eq 'SCALAR') {
-                                ${$opt->{ref}} = $val // ($no ? 0 : 1);
+                        exit 1;
+                    }
+                    elsif ($_ eq '--help') {
+                        print <<END;
+\e[31m✗\e[0m Usage: $0 <options> <targets>"
+    --jobs=<num> : Run this many parallel jobs if the rules support it.
+                   The default value is one less than the number of processors.
+    --force : Skip modification time checks and always run the rules.
+    --verbose : Show sub-dependencies and shell commands.
+    --simulate : Show rules that would be run but don't run them.
+    --touch : Update existing files' modtimes but don't actually run any rules.
+    --list-targets : List all declared targets.
+Suggested targets:
+END
+                        my (%nonfinal, %suggested, %nonsuggested, %default);
+                        for my $rule (@rules) {
+                            resolve_deps($rule);
+                            $nonfinal{$_} = 1 for @{$rule->{deps}};
+                            if (defined $rule->{options}{suggested}) {
+                                for (@{$rule->{to}}) {
+                                    if ($rule->{options}{suggested}) {
+                                        $suggested{rel2abs($_, $rule->{base})} = 1;
+                                    }
+                                    else {
+                                        $nonsuggested{rel2abs($_, $rule->{base})} = 1;
+                                    }
+                                }
                             }
-                            else {
-                                $opt->{ref}($val // ($no ? 0 : 1));
+                        }
+                        if (defined $defaults) {
+                            for (@$defaults) {
+                                $default{$_} = 1;
                             }
                         }
-                        else {
-                            say "\e[31m✗\e[0m Unrecognized option --$name.  Try --help to see available options.";
-                            exit 1;
+                        elsif (@rules) {
+                            for (@{$rules[0]{to}}) {
+                                $default{rel2abs($_, $rules[0]{base})} = 1;
+                            }
                         }
+                         # Gradually narrow down criteria for suggestion
+                        my @suggested = grep {
+                            ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
+                        } targets();
+                        if (@suggested > 12) {
+                            @suggested = grep {
+                                $default{$_} or !$nonfinal{$_} or $suggested{$_}
+                            } @suggested;
+                            if (@suggested > 12) {
+                                @suggested = grep {
+                                    $default{$_} or $phonies{$_} or $suggested{$_}
+                                } @suggested;
+                                if (@suggested > 12) {
+                                    @suggested = grep {
+                                        $default{$_} or $suggested{$_}
+                                    } @suggested;
+                                }
+                            }
+                        }
+                        for (sort @suggested) {
+                            say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
+                        }
+                        exit 1;
+
                     }
                     else {
                         push @args, $_;
@@ -313,7 +375,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                             }
                             if (defined $rule) {
                                 chdir $rule->{base};
-                                status $rule->{config} ? "⚒ " : "⚙ ", show_rule($rule);
+                                status "⚙ ", show_rule($rule);
                                 delazify($rule);
                                 pipe($rule->{output}, my $OUTPUT) or die "pipe failed: $!\n";
                                 binmode $rule->{output}, ':utf8';
@@ -340,7 +402,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                             else {  # Do a non-parallel job
                                 my $rule = shift @program;
                                 chdir $rule->{base};
-                                status $rule->{config} ? "⚒ " : "⚙ ", show_rule($rule);
+                                status "⚙ ", show_rule($rule);
                                 delazify($rule);
                                 do_rule($rule);
                                 $rule->{done} = 1;
@@ -350,7 +412,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                     else {
                         for my $rule (@program) {
                             chdir $rule->{base};
-                            status $rule->{config} ? "⚒ " : "⚙ ", show_rule($rule);
+                            status "⚙ ", show_rule($rule);
                             delazify($rule);
                             do_rule($rule);
                         }
@@ -403,7 +465,6 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
             recipe => $recipe,
             options => $options,
             check_stale => undef,
-            config => 0,
              # Intrusive state for planning and execution phases
             planned => 0,
             follow => [],
@@ -528,9 +589,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
             return "@{$_[0]{to}} ← " . join ' ', map abs2rel($_), @{$_[0]{deps}};
         }
         else {
-            my @froms = grep !$configs{rel2abs($_)}, @{$_[0]{from}};
-            @froms or @froms = @{$_[0]{from}};
-            return "@{$_[0]{to}} ← " . join ' ', @froms;
+            return "@{$_[0]{to}} ← " . join ' ', @{$_[0]{from}};
         }
     }
     sub debug_rule ($) {
@@ -553,298 +612,6 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
             return 0;
         }
     }
-
-# CONFIGURATION
-
-    sub corrupted { return "\e[31m✗\e[0m Corrupted config file $_[0]$_[1]; please delete it and try again.\n"; }
-    sub read_config {
-        my ($file, $str) = @_;
-        my ($val, $rest) = read_thing($file, $str);
-        $rest eq '' or die corrupted($file, " (extra junk at end)");
-        return $val;
-    }
-    sub read_thing {
-        my ($file, $s) = @_;
-        my $string_rx = qr/"((?:\\\\|\\"|[^\\"])*)"/s;
-        if ($s =~ s/^\{//) {  # Hash
-            my %r;
-            unless ($s =~ s/^}//) {
-                while (1) {
-                    $s =~ s/^$string_rx://
-                        or die corrupted($file, " (didn't find key after {)");
-                    my $key = $1;
-                    $key =~ s/\\([\\"])/$1/g;
-                    (my $val, $s) = read_thing($file, $s);
-                    $r{$key} = $val;
-                    next if $s =~ s/^,//;
-                    last if $s =~ s/^}//;
-                    die corrupted($file, " (unrecognized char in hash)");
-                }
-            }
-            return (\%r, $s);
-        }
-        elsif ($s =~ s/^\[//) {  # Array
-            my @r;
-            unless ($s =~ s/^]//) {
-                while (1) {
-                    (my $val, $s) = read_thing($file, $s);
-                    push @r, $val;
-                    next if $s =~ s/^,//;
-                    last if $s =~ s/^]//;
-                    die corrupted($file, " (unrecognized char in array)");
-                }
-            }
-            return (\@r, $s);
-        }
-        elsif ($s =~ /^"/) {  # String
-            $s =~ s/^$string_rx//
-                or die corrupted($file, " (malformed string or something)");
-            my $r = $1;
-            $r =~ s/\\([\\"])/$1/g;
-            return ($r, $s);
-        }
-        elsif ($s =~ s/^null//) {
-            return (undef, $s);
-        }
-        else {
-            die corrupted($file, " (unknown character in term position)");
-        }
-    }
-    sub show_thing {
-        my ($thing) = @_;
-        if (not defined $thing) {
-            return 'null';
-        }
-        elsif (ref $thing eq 'HASH') {
-            my $r = '{';
-            $r .= join ',', map {
-                my $k = $_;
-                $k =~ s/([\\"])/\\$1/g;
-                "\"$k\":" . show_thing($thing->{$_});
-            } sort keys %$thing;
-            return $r . '}';
-        }
-        elsif (ref $thing eq 'ARRAY') {
-            return '[' . (join ',', map show_thing($_), @$thing) . ']';
-        }
-        elsif (ref $thing eq '') {
-            $thing =~ s/([\\"])/\\$1/g;
-            return "\"$thing\"";
-        }
-        else {
-            croak "Cannot serialize object of ref type '" . ref $thing . "'";
-        }
-    }
-
-    sub config {
-        my ($filename, $var, $routine) = @_;
-        grep ref $var eq $_, qw(SCALAR ARRAY HASH)
-            or croak "config's second argument is not a SCALAR, ARRAY, or HASH ref (It's a " . ref($var) . " ref)";
-        !defined $routine or ref $routine eq 'CODE'
-            or croak "config's third argument is not a CODE ref";
-        my ($package, $file, $line) = caller;
-        my $rule = {
-            base => cwd,
-            to => [$filename],
-            from => [],
-            deps => undef,
-            check_stale => sub { stale_config($filename, $var); },
-            recipe => sub { gen_config($filename, $var, $routine); },
-            caller_file => $current_file,
-            caller_line => $line,
-            config => 1,
-            options => {},
-            stale => 0,
-             # Intrusive state for planning and execution phases
-            planned => 0,
-            follow => [],
-            executed => 0,
-        };
-        push @rules, $rule;
-        push @{$targets{rel2abs($filename)}}, $rule;
-        $configs{rel2abs($filename)} = 1;
-         # Read into $var immediately
-        if (-e $filename) {
-            my $str = slurp_utf8($filename);
-            chomp $str;
-            my $val = read_config($filename, $str);
-            if (ref $var eq 'SCALAR') {
-                $$var = $val;
-            }
-            elsif (ref $var eq 'ARRAY') {
-                ref $val eq 'ARRAY' or die corrupted($filename, " (expected ARRAY, got " . ref($val) . ")");
-                @$var = @$val;
-            }
-            elsif (ref $var eq 'HASH') {
-                ref $val eq 'HASH' or die corrupted($filename, " (expected HASH, got " . ref($val) . ")");
-                %$var = %$val;
-            }
-        }
-    }
-
-    sub stale_config ($$) {
-        my ($filename, $var) = @_;
-        return 1 unless -e $filename;
-        my $old = slurp_utf8($filename);
-        chomp $old;
-        my $new = show_thing(ref $var eq 'SCALAR' ? $$var : $var);
-        return $new ne $old;
-    }
-
-    sub gen_config ($$$) {
-        my ($filename, $var, $routine) = @_;
-        $routine->() if defined $routine;
-        my $new = show_thing(ref $var eq 'SCALAR' ? $$var : $var);
-        splat_utf8($filename, "$new\n");
-    }
-
-    sub option ($$;$) {
-        my ($name, $ref, $desc) = @_;
-        if (ref $name eq 'ARRAY') {
-            &option($_, $ref, $desc) for @$name;
-            return;
-        }
-        elsif (ref $ref eq 'SCALAR' or ref $ref eq 'CODE') {
-            $custom_options{$name} = {
-                ref => $ref,
-                desc => $desc,
-                custom => 1
-            };
-            delete $builtin_options{$name};
-        }
-        else {
-            croak "Second argument to option is not a SCALAR or CODE ref";
-        }
-         # Immediately find option.
-        unless (%options) {
-            for (@ARGV) {
-                if ($_ eq '--') {
-                    last;
-                }
-                elsif (/^--no-([^=]+)$/) {
-                    $options{$1} = 0;
-                }
-                elsif (/^--([^=]+)(?:=(.*))?$/) {
-                    $options{$1} = $2 // 1;
-                }
-            }
-        }
-        if (exists $options{$name}) {
-            if (ref $ref eq 'SCALAR') {
-                $$ref = $options{$name};
-            }
-            elsif (ref $ref eq 'CODE') {
-                $ref->($options{$name});
-            }
-        }
-    }
-
-    %builtin_options = (
-        help => {
-            ref => sub {
-                my (%nonfinal, %suggested, %nonsuggested, %default);
-                for my $rule (@rules) {
-                    resolve_deps($rule);
-                    $nonfinal{$_} = 1 for @{$rule->{deps}};
-                    if (defined $rule->{options}{suggested}) {
-                        for (@{$rule->{to}}) {
-                            if ($rule->{options}{suggested}) {
-                                $suggested{rel2abs($_, $rule->{base})} = 1;
-                            }
-                            else {
-                                $nonsuggested{rel2abs($_, $rule->{base})} = 1;
-                            }
-                        }
-                    }
-                }
-                if (defined $defaults) {
-                    for (@$defaults) {
-                        $default{$_} = 1;
-                    }
-                }
-                elsif (@rules) {
-                    for (@{$rules[0]{to}}) {
-                        $default{rel2abs($_, $rules[0]{base})} = 1;
-                    }
-                }
-                 # Gradually narrow down criteria for suggestion
-                my @suggested = grep {
-                    ($default{$_} or $phonies{$_} or !$nonfinal{$_}) and not $nonsuggested{$_}
-                } targets;
-                if (@suggested > 12) {
-                    @suggested = grep {
-                        $default{$_} or !$nonfinal{$_} or $suggested{$_}
-                    } @suggested;
-                    if (@suggested > 12) {
-                        @suggested = grep {
-                            $default{$_} or $phonies{$_} or $suggested{$_}
-                        } @suggested;
-                        if (@suggested > 12) {
-                            @suggested = grep {
-                                $default{$_} or $suggested{$_}
-                            } @suggested;
-                        }
-                    }
-                }
-                say "\e[31m✗\e[0m Usage: $0 <options> <targets>";
-                if (%custom_options) {
-                    say "Custom options:";
-                    for (sort keys %custom_options) {
-                        say "    ", $custom_options{$_}{desc} // "--$_";
-                    }
-                }
-                if (%builtin_options) {
-                    say "General options:";
-                    for (sort keys %builtin_options) {
-                        say "    $builtin_options{$_}{desc}";
-                    }
-                }
-                say "Suggested targets:";
-                for (sort @suggested) {
-                    say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
-                }
-                exit 1;
-            },
-            desc => "--help - show this help message",
-            custom => 0
-        },
-        'list-targets' => {
-            ref => sub {
-                say "\e[31m✗\e[0m All targets:";
-                for (sort keys %targets) {
-                    say "    ", abs2rel($_), target_is_default($_) ? " (default)" : "";
-                }
-                exit 1;
-            },
-            desc => "--list-targets - list all declared targets",
-            custom => 0
-        },
-        force => {
-            ref => \$force,
-            desc => '--force - Skip modification time checks and always run the rules',
-            custom => 0
-        },
-        verbose => {
-            ref => \$verbose,
-            desc => '--verbose - Show sub-dependencies and shell commands',
-            custom => 0
-        },
-        simulate => {
-            ref => \$simulate,
-            desc => '--simulate - Show rules that would be run but don\'t run them',
-            custom => 0
-        },
-        touch => {
-            ref => \$touch,
-            desc => '--touch - Update existing files\' modtimes instead of running the rules',
-            custom => 0
-        },
-        jobs => {
-            ref => \$jobs,
-            desc => '--jobs=<number> - Run this many parallel jobs.  By default, one less than the number of cores',
-            custom => 0
-        },
-    );
 
 # SYSTEM INTERACTION
 
