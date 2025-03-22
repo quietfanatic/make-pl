@@ -10,36 +10,50 @@ use MakePl;  # Automatically imports strict and warnings
  # the dependencies of a simple project completely automatically.
  #
  # Feel free to copy, modify, and use this as you please.
+ #
+ # TODO: This file is not sufficiently tested!
 
  # Globals at top for easy tweaking
 my $program = 'program';
-my $cc = 'gcc -Wall';
-my $cppc = 'g++ -Wall';
-my $ld = 'g++ -Wall';
-my @includes = (cwd);
+my @cc = (qw(gcc -Wall));
+my @cppc = (qw(g++ -Wall));
+my @ld = (qw(g++ -Wall));
+my @includes = (cwd);  # cwd is always where this script is
 
- # Link all .o files into the final program
-step $program, sub { grep /\.o$/, targets }, sub {
-    run "$ld @{$_[1]} -o $_[0][0]";
-};
+ # Create some build configs
+my %configs = (
+    debug => ['-ggdb'],
+    release => ['-O3'],
+);
 
- # Register a pair of .c and .o files
-sub module {
-    my ($file) = @_;
-    $file =~ /^(.*)\.c(pp)?$/ or die "Filename given to module() wasn't a .c[pp] file: $file\n";
-    my $base = $1;
-    my $compiler = $2 ? $cppc : $cc;
-    step "$base.o", $file, sub {
-        run "$compiler -c \Q$file\E -o \Q$base.o\E";
+ # Find all the source files
+my @sources = glob '*.c *.cpp */*.c */*.cpp */*/*.c */*/*.cpp';
+
+ # Loop over build configs
+for my $config (keys %configs) {
+     # Register a compile step for each source file
+    my @objects;
+    for my $source (@sources) {
+        $source =~ /^(.*)\.c(pp)?$/ or die "Source filename wasn't a .c[pp] file: $source\n";
+        my $base = $1;
+        my @compiler = $2 ? @cppc : @cc;
+        my $out = "tmp/$config/$base.o";
+        push @objects, $out;
+        step $out, $source, sub {
+            run @compiler, '-c', $source, @{$configs{$config}}, '-o', $out;
+        }, {fork => 1, mkdir => 1};
     }
+     # Register a link step for the final program
+    step "out/$config/$program", @objects, sub {
+        run @ld, @{$_[1]}, '-o', $_[0][0];
+    }, {mkdir => 1};
 }
-
- # Find all C/C++ files and declare a step for each one
-module($_) for glob '*.c *.cpp */*.c */*.cpp */*/*.c */*/*.cpp';
 
  # And finally a cleanup step
 step 'clean', [], sub {
-    unlink $program, grep /\.o$/, targets;
+    require File::Path;
+    File::Path::remove_tree('tmp');
+    File::Path::remove_tree('out');
 };
 
  # Let's generate subdependencies from #include statements.

@@ -162,7 +162,7 @@ $ENV{PWD} //= do { require Cwd; Cwd::cwd() };
                 }
             }
             else {
-                if ($step->{options}{gendir}) {
+                if ($step->{options}{mkdir}) {
                     for (@{$step->{to}}) {
                         my $path = $step->{base};
                         while (/\G(.*?)\//g) {

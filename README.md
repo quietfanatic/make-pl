@@ -43,8 +43,8 @@ step <targets>, <dependencies>, <routine>, <options>?;
           arguments containing the targets and the dependencies.
    - Here are the available options:
        - `fork => 1`
-           - This step can be run in parallel (in a forked child process).
-       - `gendir => 1`
+           - This step can be run in parallel with other forkable steps.
+       - `mkdir => 1`
            - Automatically generate the directory structures of all
              targets of this step.
 ```
@@ -152,6 +152,19 @@ just work how you expect them to.
 - If you want to manually change directories, use the chdir provided by this
   module.  Using `CORE::chdir` will desync `$ENV{PWD}`.
 
+### Configuration
+
+There are two recommended ways to do local build configuration:
+
+- You can declare different build configurations (debug, release, etc) and
+  duplicate targets between them.  Each unused target only adds about 20
+  microseconds to the script runtime.
+- For more detailed configuration (compiler flags, library locations, etc) it's
+  recommended to put global variables at the top of your build script where they
+  can be easily changed.  The build script's modification time is monitored by
+  the dependency tracker, so if you change it, everything will be properly
+  rebuilt.
+
 ### Recommendations
 
 - It's best to die if something fails.  The autodie pragma is useful.
@@ -185,11 +198,11 @@ use MakePl;
   used `perl MakePl.pm` to generate a make.pl, it'll have done this for you.
 
 - Because your build script is in a real programming language and not a DSL, you
-  can actually do real abstraction.  Take a look at `sample_make.pl` to see how.
+  can actually do real abstraction.  See `sample_make.pl` for some examples.
 - This module is entirely symlink-ignorant.  If you use functions that reduce
   symlinks like `Cwd::realpath`, you may cause confusion.
-- This won't work if you have filenames with backslashes in them.  I haven't
-  decided whether this is a bug or a feature.
+- This module won't work if you have filenames with backslashes in them.  I
+  haven't decided whether this is a bug or a feature.
 
 ### BONUS
 
